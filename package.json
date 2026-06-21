@@ -1,31 +1,32 @@
 {
-  "name": "domain-block-monitor",
-  "version": "1.0.0",
-  "description": "Domain block monitor with DNS, HTTP, proxy checks, history, and Telegram alerts.",
+  "name": "domain-radar",
+  "version": "1.0.1",
+  "description": "Domain monitor with DNS, HTTP, proxy checks, history, and Telegram alerts.",
   "main": "server/index.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "node server/index.js",
-    "client": "vite --host 0.0.0.0",
+    "client": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "db:init": "node server/db/init.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "axios": "latest",
-    "cheerio": "latest",
-    "concurrently": "latest",
-    "cors": "latest",
-    "dotenv": "latest",
-    "express": "latest",
-    "https-proxy-agent": "latest",
-    "node-cron": "latest",
-    "pg": "latest",
-    "socks-proxy-agent": "latest",
-    "vite": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "lucide-react": "latest"
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.18.3",
+    "https-proxy-agent": "^7.0.6",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "socks-proxy-agent": "^8.0.5",
+    "vite": "^6.0.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.468.0"
   },
   "devDependencies": {}
 }
