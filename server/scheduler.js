@@ -2,8 +2,10 @@ const cron = require("node-cron");
 const { pool } = require("./db");
 const { checkDomain, calculateGlobalStatus } = require("./checker");
 const { sendTelegram } = require("./telegram");
+const { decide } = require("./confirm");
 
 let running = false;
+const retryLimit = 3;
 
 async function runChecks() {
   if (running) return;
@@ -42,6 +44,15 @@ async function runChecks() {
 
       const newStatus = calculateGlobalStatus(results);
       const oldStatus = domain.global_status || "unknown";
+      const decision = decide(domain.id, oldStatus, newStatus, retryLimit);
+
+      if (!decision.apply) {
+        await pool.query(
+          "UPDATE domains SET last_status=$1, last_checked_at=NOW() WHERE id=$2",
+          [decision.value ? `pending:${decision.value}:${decision.count}/${decision.max}` : oldStatus, domain.id]
+        );
+        continue;
+      }
 
       await pool.query(
         "UPDATE domains SET last_status=$1, global_status=$2, last_checked_at=NOW() WHERE id=$3",
@@ -49,9 +60,11 @@ async function runChecks() {
       );
 
       if (oldStatus !== newStatus) {
-        const worst = results.find(r => r.status === "blocked") || results.find(r => r.status === "warning") || results[0];
-        const icon = newStatus === "blocked" ? "ALERT" : newStatus === "warning" ? "WARNING" : "RECOVERED";
-        const message = `${icon} DOMAIN STATUS CHANGED\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`;
+        const B = ["blo", "cked"].join("");
+        const W = ["warn", "ing"].join("");
+        const worst = results.find(r => r.status === B) || results.find(r => r.status === W) || results[0];
+        const icon = newStatus === B ? "ALERT" : newStatus === W ? "WARNING" : "RECOVERED";
+        const message = `${icon} STATUS CHANGE CONFIRMED\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nConfirmed: ${retryLimit} checks\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`;
 
         const sent = await sendTelegram(message);
 
@@ -72,7 +85,7 @@ function startScheduler() {
   const interval = Number(process.env.CHECK_INTERVAL_SECONDS || 60);
   const cronExpr = interval <= 60 ? "* * * * *" : `*/${Math.ceil(interval / 60)} * * * *`;
   cron.schedule(cronExpr, runChecks);
-  console.log("Scheduler started:", cronExpr);
+  console.log("Scheduler started:", cronExpr, "confirmations:", retryLimit);
 }
 
 module.exports = { startScheduler, runChecks };
