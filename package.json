@@ -1,7 +1,7 @@
 {
   "name": "domain-radar",
-  "version": "1.0.3",
-  "description": "Domain monitor with DNS, HTTP, proxy checks, history, and Telegram alerts.",
+  "version": "1.1.0",
+  "description": "Domain monitor with DNS, HTTP, proxy, provider-node checks, rank checker, history, and Telegram alerts.",
   "main": "server/index.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
@@ -9,6 +9,7 @@
     "client": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "start": "node server/index.js",
+    "agent": "node agent/provider-agent.js",
     "db:init": "node server/db/init.js"
   },
   "dependencies": {
