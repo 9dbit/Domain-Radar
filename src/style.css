@@ -5,7 +5,8 @@ aside { width: 260px; background: #010409; padding: 24px; border-right: 1px soli
 aside h1 { margin: 0 0 8px; }
 aside p { color: #8b949e; }
 main { flex: 1; padding: 24px; }
-button { background: #238636; border: 0; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+button { background: #238636; border: 0; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; justify-content: center; }
+button:disabled { opacity: .7; cursor: not-allowed; }
 input, textarea, select { background: #161b22; border: 1px solid #30363d; color: #e6edf3; padding: 10px; border-radius: 10px; width: 100%; }
 textarea { margin: 12px 0; min-height: 90px; }
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 18px; }
@@ -26,9 +27,18 @@ th { color: #8b949e; }
 .badge.unknown { background: #30363d; color: #c9d1d9; }
 .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
 .chips span { background:#0d1117; border:1px solid #30363d; padding:6px 10px; border-radius:999px; }
+.ghostBtn { margin-top: 12px; background: #21262d; border: 1px solid #30363d; }
+.loading { min-height: 100vh; display: grid; place-items: center; color: #8b949e; }
+.loginPage { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #1f2937, #0d1117 55%); }
+.loginCard { width: min(420px, 100%); background: #161b22; border: 1px solid #30363d; border-radius: 20px; padding: 28px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 20px 70px rgba(0,0,0,.35); }
+.loginCard h1 { margin: 0; }
+.loginCard p { margin: 0 0 8px; color: #8b949e; }
+.loginIcon { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; background: #0d1117; border: 1px solid #30363d; }
+.errorBox { color: #ffdcd7; background: #8e1519; border: 1px solid #ff7b72; padding: 10px; border-radius: 10px; font-size: 13px; }
 @media (max-width: 900px) {
   .app { flex-direction: column; }
   aside { width: 100%; height: auto; position: relative; }
   .cards { grid-template-columns: repeat(2, 1fr); }
   .grid { grid-template-columns: 1fr; }
+  .row { flex-direction: column; }
 }
