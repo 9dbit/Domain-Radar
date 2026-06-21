@@ -1,0 +1,34 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, Arial, sans-serif; background: #0d1117; color: #e6edf3; }
+.app { display: flex; min-height: 100vh; }
+aside { width: 260px; background: #010409; padding: 24px; border-right: 1px solid #30363d; position: sticky; top: 0; height: 100vh; }
+aside h1 { margin: 0 0 8px; }
+aside p { color: #8b949e; }
+main { flex: 1; padding: 24px; }
+button { background: #238636; border: 0; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+input, textarea, select { background: #161b22; border: 1px solid #30363d; color: #e6edf3; padding: 10px; border-radius: 10px; width: 100%; }
+textarea { margin: 12px 0; min-height: 90px; }
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 18px; }
+.card, .panel { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 18px; }
+.card { display: flex; flex-direction: column; gap: 8px; }
+.card b { font-size: 32px; }
+.card span { color: #8b949e; }
+.panel { margin-bottom: 18px; overflow: auto; }
+.row { display: flex; gap: 10px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr 2fr 1fr auto; gap: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { border-bottom: 1px solid #30363d; padding: 10px; text-align: left; }
+th { color: #8b949e; }
+.badge { padding: 5px 9px; border-radius: 999px; font-size: 12px; text-transform: uppercase; }
+.badge.working { background: #1f6f3a; color: #aff5b4; }
+.badge.warning { background: #9e6a03; color: #ffdf8b; }
+.badge.blocked { background: #8e1519; color: #ffdcd7; }
+.badge.unknown { background: #30363d; color: #c9d1d9; }
+.chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.chips span { background:#0d1117; border:1px solid #30363d; padding:6px 10px; border-radius:999px; }
+@media (max-width: 900px) {
+  .app { flex-direction: column; }
+  aside { width: 100%; height: auto; position: relative; }
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  .grid { grid-template-columns: 1fr; }
+}
