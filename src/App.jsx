@@ -1,13 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban } from "lucide-react";
+import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut } from "lucide-react";
 import "./style.css";
 
 const api = async (url, options = {}) => {
   const res = await fetch(url, {
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...options
   });
+
+  if (res.status === 401) {
+    const error = new Error("Unauthorized");
+    error.status = 401;
+    throw error;
+  }
+
   return res.json();
 };
 
@@ -16,7 +24,49 @@ function Badge({ status }) {
   return <span className={cls}>{status || "unknown"}</span>;
 }
 
+function Login({ onLogin }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
+      onLogin();
+    } catch (err) {
+      setError("Password salah atau session tidak valid.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="loginPage">
+      <form className="loginCard" onSubmit={submit}>
+        <div className="loginIcon"><Lock size={26} /></div>
+        <h1>Domain Radar</h1>
+        <p>Masuk ke dashboard monitoring.</p>
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Admin password"
+          autoFocus
+        />
+        {error && <div className="errorBox">{error}</div>}
+        <button disabled={loading}>{loading ? "Checking..." : "Login"}</button>
+      </form>
+    </div>
+  );
+}
+
 function App() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const [overview, setOverview] = useState({});
   const [domains, setDomains] = useState([]);
   const [results, setResults] = useState([]);
@@ -25,18 +75,39 @@ function App() {
   const [proxy, setProxy] = useState({ name: "", provider_name: "", proxy_url: "", proxy_type: "http" });
   const [proxies, setProxies] = useState([]);
 
+  async function checkAuth() {
+    try {
+      const me = await api("/api/auth/me");
+      setAuthenticated(Boolean(me.authenticated));
+    } catch (err) {
+      setAuthenticated(false);
+    } finally {
+      setAuthChecked(true);
+    }
+  }
+
   async function load() {
-    setOverview(await api("/api/overview"));
-    setDomains(await api("/api/domains"));
-    setResults(await api("/api/results"));
-    setProxies(await api("/api/proxies"));
+    try {
+      setOverview(await api("/api/overview"));
+      setDomains(await api("/api/domains"));
+      setResults(await api("/api/results"));
+      setProxies(await api("/api/proxies"));
+      setAuthenticated(true);
+    } catch (err) {
+      if (err.status === 401) setAuthenticated(false);
+    }
   }
 
   useEffect(() => {
+    checkAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
     load();
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
-  }, []);
+  }, [authenticated]);
 
   async function addDomain(e) {
     e.preventDefault();
@@ -63,12 +134,26 @@ function App() {
     load();
   }
 
+  async function logout() {
+    await api("/api/auth/logout", { method: "POST" });
+    setAuthenticated(false);
+  }
+
+  if (!authChecked) {
+    return <div className="loading">Loading Domain Radar...</div>;
+  }
+
+  if (!authenticated) {
+    return <Login onLogin={() => { setAuthenticated(true); load(); }} />;
+  }
+
   return (
     <div className="app">
       <aside>
         <h1>Domain Radar</h1>
         <p>Multi-checker domain monitor</p>
         <button onClick={manualCheck}><RefreshCw size={16}/> Manual Check</button>
+        <button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>
       </aside>
 
       <main>
