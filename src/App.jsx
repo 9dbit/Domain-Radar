@@ -3,21 +3,28 @@ import { createRoot } from "react-dom/client";
 import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut } from "lucide-react";
 import "./style.css";
 
-const api = async (url, options = {}) => {
+async function api(url, options = {}) {
   const res = await fetch(url, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...options
   });
 
-  if (res.status === 401) {
-    const error = new Error("Unauthorized");
-    error.status = 401;
+  let data = {};
+  try {
+    data = await res.json();
+  } catch (_) {
+    data = {};
+  }
+
+  if (!res.ok) {
+    const error = new Error(data.error || "Request failed");
+    error.status = res.status;
     throw error;
   }
 
-  return res.json();
-};
+  return data;
+}
 
 function Badge({ status }) {
   const cls = `badge ${status || "unknown"}`;
@@ -36,7 +43,7 @@ function Login({ onLogin }) {
 
     try {
       await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
-      onLogin();
+      await onLogin();
     } catch (err) {
       setError("Password salah atau session tidak valid.");
     } finally {
@@ -53,20 +60,18 @@ function Login({ onLogin }) {
         <input
           type="password"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           placeholder="Admin password"
           autoFocus
         />
-        {error && <div className="errorBox">{error}</div>}
-        <button disabled={loading}>{loading ? "Checking..." : "Login"}</button>
+        {error ? <div className="errorBox">{error}</div> : null}
+        <button type="submit" disabled={loading}>{loading ? "Checking..." : "Login"}</button>
       </form>
     </div>
   );
 }
 
-function App() {
-  const [authChecked, setAuthChecked] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
+function Dashboard({ onLogout }) {
   const [overview, setOverview] = useState({});
   const [domains, setDomains] = useState([]);
   const [results, setResults] = useState([]);
@@ -74,40 +79,31 @@ function App() {
   const [bulk, setBulk] = useState("");
   const [proxy, setProxy] = useState({ name: "", provider_name: "", proxy_url: "", proxy_type: "http" });
   const [proxies, setProxies] = useState([]);
-
-  async function checkAuth() {
-    try {
-      const me = await api("/api/auth/me");
-      setAuthenticated(Boolean(me.authenticated));
-    } catch (err) {
-      setAuthenticated(false);
-    } finally {
-      setAuthChecked(true);
-    }
-  }
+  const [notice, setNotice] = useState("");
 
   async function load() {
     try {
-      setOverview(await api("/api/overview"));
-      setDomains(await api("/api/domains"));
-      setResults(await api("/api/results"));
-      setProxies(await api("/api/proxies"));
-      setAuthenticated(true);
+      const [overviewData, domainData, resultData, proxyData] = await Promise.all([
+        api("/api/overview"),
+        api("/api/domains"),
+        api("/api/results"),
+        api("/api/proxies")
+      ]);
+      setOverview(overviewData || {});
+      setDomains(Array.isArray(domainData) ? domainData : []);
+      setResults(Array.isArray(resultData) ? resultData : []);
+      setProxies(Array.isArray(proxyData) ? proxyData : []);
     } catch (err) {
-      if (err.status === 401) setAuthenticated(false);
+      if (err.status === 401) onLogout();
+      else setNotice(err.message || "Gagal load data.");
     }
   }
 
   useEffect(() => {
-    checkAuth();
-  }, []);
-
-  useEffect(() => {
-    if (!authenticated) return;
     load();
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
-  }, [authenticated]);
+  }, []);
 
   async function addDomain(e) {
     e.preventDefault();
@@ -130,21 +126,15 @@ function App() {
   }
 
   async function manualCheck() {
+    setNotice("Manual check running...");
     await api("/api/check/manual", { method: "POST" });
+    setNotice("Manual check selesai.");
     load();
   }
 
   async function logout() {
     await api("/api/auth/logout", { method: "POST" });
-    setAuthenticated(false);
-  }
-
-  if (!authChecked) {
-    return <div className="loading">Loading Domain Radar...</div>;
-  }
-
-  if (!authenticated) {
-    return <Login onLogin={() => { setAuthenticated(true); load(); }} />;
+    onLogout();
   }
 
   return (
@@ -154,6 +144,7 @@ function App() {
         <p>Multi-checker domain monitor</p>
         <button onClick={manualCheck}><RefreshCw size={16}/> Manual Check</button>
         <button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>
+        {notice ? <p className="sideNotice">{notice}</p> : null}
       </aside>
 
       <main>
@@ -167,10 +158,10 @@ function App() {
         <section className="panel">
           <h2>Add Domain</h2>
           <form onSubmit={addDomain} className="row">
-            <input value={domain} onChange={e => setDomain(e.target.value)} placeholder="example.com" />
+            <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" />
             <button>Add</button>
           </form>
-          <textarea value={bulk} onChange={e => setBulk(e.target.value)} placeholder="Bulk import, one domain per line" />
+          <textarea value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder="Bulk import, one domain per line" />
           <button onClick={bulkImport}>Bulk Import</button>
         </section>
 
@@ -179,7 +170,7 @@ function App() {
           <table>
             <thead><tr><th>Domain</th><th>Status</th><th>Last Checked</th><th>Active</th></tr></thead>
             <tbody>
-              {domains.map(d => (
+              {domains.map((d) => (
                 <tr key={d.id}>
                   <td>{d.domain}</td>
                   <td><Badge status={d.global_status}/></td>
@@ -194,17 +185,17 @@ function App() {
         <section className="panel">
           <h2>Proxy Checker</h2>
           <form onSubmit={addProxy} className="grid">
-            <input placeholder="Name" value={proxy.name} onChange={e => setProxy({...proxy, name:e.target.value})}/>
-            <input placeholder="Provider" value={proxy.provider_name} onChange={e => setProxy({...proxy, provider_name:e.target.value})}/>
-            <input placeholder="Proxy URL" value={proxy.proxy_url} onChange={e => setProxy({...proxy, proxy_url:e.target.value})}/>
-            <select value={proxy.proxy_type} onChange={e => setProxy({...proxy, proxy_type:e.target.value})}>
+            <input placeholder="Name" value={proxy.name} onChange={(e) => setProxy({...proxy, name:e.target.value})}/>
+            <input placeholder="Provider" value={proxy.provider_name} onChange={(e) => setProxy({...proxy, provider_name:e.target.value})}/>
+            <input placeholder="Proxy URL" value={proxy.proxy_url} onChange={(e) => setProxy({...proxy, proxy_url:e.target.value})}/>
+            <select value={proxy.proxy_type} onChange={(e) => setProxy({...proxy, proxy_type:e.target.value})}>
               <option value="http">HTTP/HTTPS</option>
               <option value="socks">SOCKS</option>
             </select>
             <button>Add Proxy</button>
           </form>
           <div className="chips">
-            {proxies.map(p => <span key={p.id}>{p.provider_name}: {p.name}</span>)}
+            {proxies.map((p) => <span key={p.id}>{p.provider_name}: {p.name}</span>)}
           </div>
         </section>
 
@@ -213,7 +204,7 @@ function App() {
           <table>
             <thead><tr><th>Time</th><th>Domain</th><th>Checker</th><th>Status</th><th>HTTP</th><th>Reason</th></tr></thead>
             <tbody>
-              {results.map(r => (
+              {results.map((r) => (
                 <tr key={r.id}>
                   <td>{new Date(r.checked_at).toLocaleString()}</td>
                   <td>{r.domain}</td>
@@ -231,4 +222,42 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+function App() {
+  const [checked, setChecked] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [bootError, setBootError] = useState("");
+
+  async function checkAuth() {
+    try {
+      const me = await api("/api/auth/me");
+      setAuthenticated(Boolean(me.authenticated));
+    } catch (err) {
+      setBootError(err.message || "Auth check failed.");
+      setAuthenticated(false);
+    } finally {
+      setChecked(true);
+    }
+  }
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  if (!checked) return <div className="loading">Loading Domain Radar...</div>;
+
+  if (!authenticated) {
+    return (
+      <>
+        <Login onLogin={async () => { setAuthenticated(true); }} />
+        {bootError ? <div className="bootError">{bootError}</div> : null}
+      </>
+    );
+  }
+
+  return <Dashboard onLogout={() => setAuthenticated(false)} />;
+}
+
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  createRoot(rootEl).render(<App />);
+}
