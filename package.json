@@ -1,6 +1,6 @@
 {
   "name": "domain-radar",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Domain monitor with DNS, HTTP, proxy checks, history, and Telegram alerts.",
   "main": "server/index.js",
   "scripts": {
@@ -16,9 +16,11 @@
     "axios": "^1.7.9",
     "cheerio": "^1.0.0",
     "concurrently": "^9.1.2",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.18.3",
+    "express-session": "^1.18.1",
     "https-proxy-agent": "^7.0.6",
     "node-cron": "^3.0.3",
     "pg": "^8.13.1",
