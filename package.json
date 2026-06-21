@@ -1,6 +1,6 @@
 {
   "name": "domain-radar",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Domain monitor with DNS, HTTP, proxy checks, history, and Telegram alerts.",
   "main": "server/index.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "db:init": "node server/db/init.js"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-react": "^4.3.4",
     "axios": "^1.7.9",
     "cheerio": "^1.0.0",
     "concurrently": "^9.1.2",
@@ -23,9 +23,9 @@
     "node-cron": "^3.0.3",
     "pg": "^8.13.1",
     "socks-proxy-agent": "^8.0.5",
-    "vite": "^6.0.7",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "vite": "^5.4.11",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "lucide-react": "^0.468.0"
   },
   "devDependencies": {}
