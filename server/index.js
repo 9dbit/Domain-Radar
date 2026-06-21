@@ -9,6 +9,7 @@ const { pool } = require("./db");
 const { runChecks, startScheduler } = require("./scheduler");
 const { normalizeDomain } = require("./checker");
 const settingsRoutes = require("./settingsRoutes");
+const { sendTelegram } = require("./telegram");
 
 const app = express();
 const sessionSecret = process.env.SESSION_SECRET || "domain-radar-dev-session-secret";
@@ -74,6 +75,12 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 app.use("/api/settings", requireAdmin, settingsRoutes);
+
+app.post("/api/telegram/test", requireAdmin, async (req, res) => {
+  const message = `DOMAIN RADAR TEST\n\nTelegram alert is working.\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`;
+  const sent = await sendTelegram(message);
+  res.json({ ok: sent });
+});
 
 app.get("/api/overview", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
