@@ -4,6 +4,7 @@ const { checkDomain, calculateGlobalStatus } = require("./checker");
 const { sendTelegram } = require("./telegram");
 const { decide } = require("./confirm");
 const { getRuntimeSettings } = require("./runtimeSettings");
+const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 
 let running = false;
 
@@ -25,23 +26,22 @@ async function runChecks() {
     const retryLimit = getRetryLimit();
     const { rows: domains } = await pool.query("SELECT * FROM domains WHERE is_active = TRUE ORDER BY id ASC");
     const { rows: proxies } = await pool.query("SELECT * FROM proxies WHERE is_active = TRUE ORDER BY id ASC");
+    const nodes = await getActiveNodes();
 
     for (const domain of domains) {
       const results = [];
 
-      const directResult = await checkDomain(domain.domain, {
-        type: "direct",
-        provider_name: "Direct"
-      });
+      const directResult = await checkDomain(domain.domain, { type: "direct", provider_name: "Direct" });
       results.push(directResult);
 
       for (const proxy of proxies) {
-        const proxyResult = await checkDomain(domain.domain, {
-          type: "proxy",
-          provider_name: proxy.provider_name,
-          proxy
-        });
+        const proxyResult = await checkDomain(domain.domain, { type: "proxy", provider_name: proxy.provider_name, proxy });
         results.push(proxyResult);
+      }
+
+      for (const node of nodes) {
+        const nodeResult = await checkViaNode(domain.domain, node);
+        results.push(nodeResult);
       }
 
       for (const r of results) {
@@ -78,7 +78,6 @@ async function runChecks() {
         const message = `${icon} STATUS CHANGE CONFIRMED\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nConfirmed: ${retryLimit} checks\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`;
 
         const sent = await sendTelegram(message);
-
         await pool.query(
           "INSERT INTO alerts (domain_id, old_status, new_status, message, sent_to_telegram) VALUES ($1,$2,$3,$4,$5)",
           [domain.id, oldStatus, newStatus, message, sent]
