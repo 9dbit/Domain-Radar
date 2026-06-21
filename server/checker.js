@@ -2,9 +2,10 @@ const axios = require("axios");
 const dns = require("dns").promises;
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const { SocksProxyAgent } = require("socks-proxy-agent");
+const { getRuntimeSettings } = require("./runtimeSettings");
 
 function getKeywords() {
-  const raw = process.env.STATUS_KEYWORDS || "internetpositif,trustpositif,nawala";
+  const raw = getRuntimeSettings().status_keywords || "internetpositif,trustpositif,nawala";
   return raw.split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
 }
 
