@@ -10,12 +10,11 @@ const { runChecks, startScheduler } = require("./scheduler");
 const { normalizeDomain } = require("./checker");
 
 const app = express();
-const isProduction = process.env.NODE_ENV === "production";
 const sessionSecret = process.env.SESSION_SECRET || "domain-radar-dev-session-secret";
 const adminPassword = process.env.ADMIN_PASSWORD || "";
 
 app.set("trust proxy", 1);
-app.use(cors({ credentials: true }));
+app.use(cors({ credentials: true, origin: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(
   session({
@@ -23,10 +22,11 @@ app.use(
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: isProduction,
+      secure: "auto",
       maxAge: 1000 * 60 * 60 * 24 * 7
     }
   })
