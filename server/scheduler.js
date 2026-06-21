@@ -3,15 +3,26 @@ const { pool } = require("./db");
 const { checkDomain, calculateGlobalStatus } = require("./checker");
 const { sendTelegram } = require("./telegram");
 const { decide } = require("./confirm");
+const { getRuntimeSettings } = require("./runtimeSettings");
 
 let running = false;
-const retryLimit = 3;
+
+function getRetryLimit() {
+  const value = Number(getRuntimeSettings().retry_confirmations || 3);
+  return Number.isFinite(value) && value > 0 ? value : 3;
+}
+
+function getCronExpr() {
+  const interval = Number(getRuntimeSettings().check_interval_seconds || 60);
+  return interval <= 60 ? "* * * * *" : `*/${Math.ceil(interval / 60)} * * * *`;
+}
 
 async function runChecks() {
   if (running) return;
   running = true;
 
   try {
+    const retryLimit = getRetryLimit();
     const { rows: domains } = await pool.query("SELECT * FROM domains WHERE is_active = TRUE ORDER BY id ASC");
     const { rows: proxies } = await pool.query("SELECT * FROM proxies WHERE is_active = TRUE ORDER BY id ASC");
 
@@ -82,10 +93,9 @@ async function runChecks() {
 }
 
 function startScheduler() {
-  const interval = Number(process.env.CHECK_INTERVAL_SECONDS || 60);
-  const cronExpr = interval <= 60 ? "* * * * *" : `*/${Math.ceil(interval / 60)} * * * *`;
+  const cronExpr = getCronExpr();
   cron.schedule(cronExpr, runChecks);
-  console.log("Scheduler started:", cronExpr, "confirmations:", retryLimit);
+  console.log("Scheduler started:", cronExpr, "confirmations:", getRetryLimit());
 }
 
 module.exports = { startScheduler, runChecks };
