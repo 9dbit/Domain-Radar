@@ -7,7 +7,7 @@ const fs = require("fs");
 const session = require("express-session");
 const { pool } = require("./db");
 const { runChecks, startScheduler } = require("./scheduler");
-const { normalizeDomain } = require("./checker");
+const { normalizeDomain, checkDomain, calculateGlobalStatus } = require("./checker");
 const settingsRoutes = require("./settingsRoutes");
 const { loadSettings } = require("./settingsStore");
 const { sendTelegram } = require("./telegram");
@@ -26,12 +26,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     proxy: true,
-    cookie: {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: "auto",
-      maxAge: 1000 * 60 * 60 * 24 * 7
-    }
+    cookie: { httpOnly: true, sameSite: "lax", secure: "auto", maxAge: 1000 * 60 * 60 * 24 * 7 }
   })
 );
 
@@ -49,12 +44,52 @@ function csvEscape(value) {
 
 function sendCsv(res, filename, rows) {
   const headers = rows.length ? Object.keys(rows[0]) : [];
-  const body = [headers.join(",")]
-    .concat(rows.map((row) => headers.map((h) => csvEscape(row[h])).join(",")))
-    .join("\n");
+  const body = [headers.join(",")].concat(rows.map((row) => headers.map((h) => csvEscape(row[h])).join(","))).join("\n");
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename=\"${filename}\"`);
   res.send(body);
+}
+
+function parseBulkLine(line) {
+  const raw = String(line || "").trim();
+  if (!raw) return null;
+  const parts = raw.split(/[,;\t]/).map((x) => x.trim());
+  return { domain: normalizeDomain(parts[0] || ""), project_name: parts.slice(1).join(" ") || "" };
+}
+
+async function runSingleDomainCheck(domainRow) {
+  const proxies = (await pool.query("SELECT * FROM proxies WHERE is_active=true")).rows;
+  const checks = [checkDomain(domainRow.domain, { type: "direct", provider_name: "Direct" })];
+  for (const proxy of proxies) {
+    checks.push(checkDomain(domainRow.domain, { type: "proxy", provider_name: proxy.provider_name || proxy.name, proxy }));
+  }
+  const results = await Promise.all(checks);
+
+  for (const result of results) {
+    await pool.query(
+      `INSERT INTO check_results (domain_id, checker_type, provider_name, status, http_status, final_url, dns_result, latency_ms, reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [domainRow.id, result.checker_type, result.provider_name, result.status, result.http_status, result.final_url, result.dns_result, result.latency_ms, result.reason]
+    );
+  }
+
+  const oldStatus = domainRow.global_status || "unknown";
+  const newStatus = calculateGlobalStatus(results);
+  await pool.query(
+    "UPDATE domains SET last_status=$1, global_status=$2, last_checked_at=NOW() WHERE id=$3",
+    [oldStatus, newStatus, domainRow.id]
+  );
+
+  if (oldStatus !== newStatus) {
+    const message = `DOMAIN STATUS CHANGED\n\nDomain: ${domainRow.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nMode: Single manual check`;
+    const sent = await sendTelegram(message);
+    await pool.query(
+      "INSERT INTO alerts (domain_id, old_status, new_status, message, sent_to_telegram) VALUES ($1,$2,$3,$4,$5)",
+      [domainRow.id, oldStatus, newStatus, message, sent]
+    );
+  }
+
+  return { old_status: oldStatus, new_status: newStatus, results };
 }
 
 app.get("/api/health", async (req, res) => {
@@ -75,11 +110,7 @@ app.post("/api/auth/login", (req, res) => {
     req.session.isAdmin = true;
     return res.json({ ok: true });
   }
-
-  if (String(req.body.password || "") !== adminPassword) {
-    return res.status(401).json({ error: "Invalid password" });
-  }
-
+  if (String(req.body.password || "") !== adminPassword) return res.status(401).json({ error: "Invalid password" });
   req.session.isAdmin = true;
   res.json({ ok: true });
 });
@@ -101,8 +132,7 @@ app.post("/api/telegram/test", requireAdmin, async (req, res) => {
 
 app.get("/api/overview", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
-    SELECT 
-      COUNT(*)::int AS total,
+    SELECT COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE global_status='working')::int AS working,
       COUNT(*) FILTER (WHERE global_status='warning')::int AS warning,
       COUNT(*) FILTER (WHERE global_status='blocked')::int AS blocked,
@@ -110,6 +140,31 @@ app.get("/api/overview", requireAdmin, async (req, res) => {
     FROM domains
   `);
   res.json(rows[0]);
+});
+
+app.get("/api/projects", requireAdmin, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT COALESCE(NULLIF(project_name,''),'No Project') AS project_name,
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE global_status='working')::int AS working,
+      COUNT(*) FILTER (WHERE global_status='warning')::int AS warning,
+      COUNT(*) FILTER (WHERE global_status='blocked')::int AS blocked
+    FROM domains
+    GROUP BY COALESCE(NULLIF(project_name,''),'No Project')
+    ORDER BY total DESC, project_name ASC
+  `);
+  res.json(rows);
+});
+
+app.get("/api/alerts", requireAdmin, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT a.*, d.domain, d.project_name
+    FROM alerts a
+    LEFT JOIN domains d ON d.id = a.domain_id
+    ORDER BY a.created_at DESC
+    LIMIT 100
+  `);
+  res.json(rows);
 });
 
 app.get("/api/domains", requireAdmin, async (req, res) => {
@@ -121,7 +176,6 @@ app.post("/api/domains", requireAdmin, async (req, res) => {
   const domain = normalizeDomain(req.body.domain || "");
   const project = req.body.project_name || "";
   if (!domain) return res.status(400).json({ error: "Domain required" });
-
   const { rows } = await pool.query(
     `INSERT INTO domains (domain, project_name) VALUES ($1,$2)
      ON CONFLICT (domain) DO UPDATE SET project_name=EXCLUDED.project_name
@@ -132,18 +186,14 @@ app.post("/api/domains", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/domains/bulk", requireAdmin, async (req, res) => {
-  const items = String(req.body.text || "")
-    .split(/\r?\n/)
-    .map(normalizeDomain)
-    .filter(Boolean);
-
+  const items = String(req.body.text || "").split(/\r?\n/).map(parseBulkLine).filter((x) => x && x.domain);
   const inserted = [];
-  for (const domain of items) {
+  for (const item of items) {
     const { rows } = await pool.query(
-      `INSERT INTO domains (domain) VALUES ($1)
-       ON CONFLICT (domain) DO NOTHING
+      `INSERT INTO domains (domain, project_name) VALUES ($1,$2)
+       ON CONFLICT (domain) DO UPDATE SET project_name=COALESCE(NULLIF(EXCLUDED.project_name,''), domains.project_name)
        RETURNING *`,
-      [domain]
+      [item.domain, item.project_name]
     );
     if (rows[0]) inserted.push(rows[0]);
   }
@@ -154,8 +204,7 @@ app.patch("/api/domains/:id", requireAdmin, async (req, res) => {
   const { domain, is_active, project_name } = req.body;
   const cleanDomain = domain !== undefined ? normalizeDomain(domain) : undefined;
   const { rows } = await pool.query(
-    `UPDATE domains 
-     SET domain=COALESCE($1,domain), is_active=COALESCE($2,is_active), project_name=COALESCE($3,project_name)
+    `UPDATE domains SET domain=COALESCE($1,domain), is_active=COALESCE($2,is_active), project_name=COALESCE($3,project_name)
      WHERE id=$4 RETURNING *`,
     [cleanDomain || null, is_active, project_name, req.params.id]
   );
@@ -175,8 +224,7 @@ app.get("/api/proxies", requireAdmin, async (req, res) => {
 app.post("/api/proxies", requireAdmin, async (req, res) => {
   const { name, provider_name, proxy_url, proxy_type } = req.body;
   const { rows } = await pool.query(
-    `INSERT INTO proxies (name, provider_name, proxy_url, proxy_type)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
+    `INSERT INTO proxies (name, provider_name, proxy_url, proxy_type) VALUES ($1,$2,$3,$4) RETURNING *`,
     [name, provider_name, proxy_url, proxy_type || "http"]
   );
   res.json(rows[0]);
@@ -219,6 +267,13 @@ app.post("/api/check/manual", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/check/domain/:id", requireAdmin, async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM domains WHERE id=$1", [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: "Domain not found" });
+  const result = await runSingleDomainCheck(rows[0]);
+  res.json({ ok: true, ...result });
+});
+
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: err.message || "Internal server error" });
@@ -228,9 +283,7 @@ const distPath = path.join(__dirname, "../dist");
 app.use(express.static(distPath));
 app.get("*", (req, res) => {
   const indexPath = path.join(distPath, "index.html");
-  if (fs.existsSync(indexPath)) {
-    return res.sendFile(indexPath);
-  }
+  if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
   res.json({ ok: true, message: "API server is running. Run npm run client for the dashboard during development." });
 });
 
