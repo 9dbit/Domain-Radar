@@ -4,24 +4,75 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const session = require("express-session");
 const { pool } = require("./db");
 const { runChecks, startScheduler } = require("./scheduler");
 const { normalizeDomain } = require("./checker");
 
 const app = express();
-app.use(cors());
+const isProduction = process.env.NODE_ENV === "production";
+const sessionSecret = process.env.SESSION_SECRET || "domain-radar-dev-session-secret";
+const adminPassword = process.env.ADMIN_PASSWORD || "";
+
+app.set("trust proxy", 1);
+app.use(cors({ credentials: true }));
 app.use(express.json({ limit: "2mb" }));
+app.use(
+  session({
+    name: "domain_radar_sid",
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProduction,
+      maxAge: 1000 * 60 * 60 * 24 * 7
+    }
+  })
+);
+
+function requireAdmin(req, res, next) {
+  if (!adminPassword) return next();
+  if (req.session && req.session.isAdmin) return next();
+  return res.status(401).json({ error: "Unauthorized" });
+}
 
 app.get("/api/health", async (req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ ok: true, database: "connected" });
+    res.json({ ok: true, database: "connected", auth_enabled: Boolean(adminPassword) });
   } catch (err) {
     res.status(500).json({ ok: false, database: "error", message: err.message });
   }
 });
 
-app.get("/api/overview", async (req, res) => {
+app.get("/api/auth/me", (req, res) => {
+  res.json({ authenticated: !adminPassword || Boolean(req.session && req.session.isAdmin) });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  if (!adminPassword) {
+    req.session.isAdmin = true;
+    return res.json({ ok: true });
+  }
+
+  if (String(req.body.password || "") !== adminPassword) {
+    return res.status(401).json({ error: "Invalid password" });
+  }
+
+  req.session.isAdmin = true;
+  res.json({ ok: true });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("domain_radar_sid");
+    res.json({ ok: true });
+  });
+});
+
+app.get("/api/overview", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT 
       COUNT(*)::int AS total,
@@ -34,12 +85,12 @@ app.get("/api/overview", async (req, res) => {
   res.json(rows[0]);
 });
 
-app.get("/api/domains", async (req, res) => {
+app.get("/api/domains", requireAdmin, async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM domains ORDER BY id DESC");
   res.json(rows);
 });
 
-app.post("/api/domains", async (req, res) => {
+app.post("/api/domains", requireAdmin, async (req, res) => {
   const domain = normalizeDomain(req.body.domain || "");
   const project = req.body.project_name || "";
   if (!domain) return res.status(400).json({ error: "Domain required" });
@@ -53,7 +104,7 @@ app.post("/api/domains", async (req, res) => {
   res.json(rows[0]);
 });
 
-app.post("/api/domains/bulk", async (req, res) => {
+app.post("/api/domains/bulk", requireAdmin, async (req, res) => {
   const items = String(req.body.text || "")
     .split(/\r?\n/)
     .map(normalizeDomain)
@@ -72,7 +123,7 @@ app.post("/api/domains/bulk", async (req, res) => {
   res.json({ inserted_count: inserted.length, inserted });
 });
 
-app.patch("/api/domains/:id", async (req, res) => {
+app.patch("/api/domains/:id", requireAdmin, async (req, res) => {
   const { is_active, project_name } = req.body;
   const { rows } = await pool.query(
     `UPDATE domains 
@@ -83,17 +134,17 @@ app.patch("/api/domains/:id", async (req, res) => {
   res.json(rows[0]);
 });
 
-app.delete("/api/domains/:id", async (req, res) => {
+app.delete("/api/domains/:id", requireAdmin, async (req, res) => {
   await pool.query("DELETE FROM domains WHERE id=$1", [req.params.id]);
   res.json({ ok: true });
 });
 
-app.get("/api/proxies", async (req, res) => {
+app.get("/api/proxies", requireAdmin, async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM proxies ORDER BY id DESC");
   res.json(rows);
 });
 
-app.post("/api/proxies", async (req, res) => {
+app.post("/api/proxies", requireAdmin, async (req, res) => {
   const { name, provider_name, proxy_url, proxy_type } = req.body;
   const { rows } = await pool.query(
     `INSERT INTO proxies (name, provider_name, proxy_url, proxy_type)
@@ -103,7 +154,7 @@ app.post("/api/proxies", async (req, res) => {
   res.json(rows[0]);
 });
 
-app.get("/api/results", async (req, res) => {
+app.get("/api/results", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT r.*, d.domain
     FROM check_results r
@@ -114,7 +165,7 @@ app.get("/api/results", async (req, res) => {
   res.json(rows);
 });
 
-app.post("/api/check/manual", async (req, res) => {
+app.post("/api/check/manual", requireAdmin, async (req, res) => {
   await runChecks();
   res.json({ ok: true });
 });
