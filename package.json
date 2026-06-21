@@ -1,0 +1,31 @@
+{
+  "name": "domain-block-monitor",
+  "version": "1.0.0",
+  "description": "Domain block monitor with DNS, HTTP, proxy checks, history, and Telegram alerts.",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "axios": "latest",
+    "cheerio": "latest",
+    "concurrently": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "https-proxy-agent": "latest",
+    "node-cron": "latest",
+    "pg": "latest",
+    "socks-proxy-agent": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest"
+  },
+  "devDependencies": {}
+}
