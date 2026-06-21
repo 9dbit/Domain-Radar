@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut } from "lucide-react";
+import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut, Settings } from "lucide-react";
 import "./style.css";
 
 async function api(url, options = {}) {
@@ -80,19 +80,26 @@ function Dashboard({ onLogout }) {
   const [proxy, setProxy] = useState({ name: "", provider_name: "", proxy_url: "", proxy_type: "http" });
   const [proxies, setProxies] = useState([]);
   const [notice, setNotice] = useState("");
+  const [settings, setSettings] = useState({
+    check_interval_seconds: "60",
+    retry_confirmations: "3",
+    status_keywords: "internetpositif,trustpositif,nawala"
+  });
 
   async function load() {
     try {
-      const [overviewData, domainData, resultData, proxyData] = await Promise.all([
+      const [overviewData, domainData, resultData, proxyData, settingsData] = await Promise.all([
         api("/api/overview"),
         api("/api/domains"),
         api("/api/results"),
-        api("/api/proxies")
+        api("/api/proxies"),
+        api("/api/settings")
       ]);
       setOverview(overviewData || {});
       setDomains(Array.isArray(domainData) ? domainData : []);
       setResults(Array.isArray(resultData) ? resultData : []);
       setProxies(Array.isArray(proxyData) ? proxyData : []);
+      setSettings(settingsData || settings);
     } catch (err) {
       if (err.status === 401) onLogout();
       else setNotice(err.message || "Gagal load data.");
@@ -104,6 +111,13 @@ function Dashboard({ onLogout }) {
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, []);
+
+  async function saveSettings(e) {
+    e.preventDefault();
+    const saved = await api("/api/settings", { method: "POST", body: JSON.stringify(settings) });
+    setSettings(saved);
+    setNotice("Settings saved. Scheduler interval update applies after server restart/redeploy. Retry and keywords apply immediately.");
+  }
 
   async function addDomain(e) {
     e.preventDefault();
@@ -156,6 +170,26 @@ function Dashboard({ onLogout }) {
         </section>
 
         <section className="panel">
+          <h2><Settings size={20}/> Settings</h2>
+          <form onSubmit={saveSettings} className="settingsGrid">
+            <label>
+              <span>Check interval seconds</span>
+              <input value={settings.check_interval_seconds} onChange={(e) => setSettings({...settings, check_interval_seconds:e.target.value})} />
+            </label>
+            <label>
+              <span>Retry confirmations</span>
+              <input value={settings.retry_confirmations} onChange={(e) => setSettings({...settings, retry_confirmations:e.target.value})} />
+            </label>
+            <label className="wide">
+              <span>Status keywords</span>
+              <input value={settings.status_keywords} onChange={(e) => setSettings({...settings, status_keywords:e.target.value})} />
+            </label>
+            <button>Save Settings</button>
+          </form>
+          <p className="hint">3x check = interval × retry. Jika interval 60 detik dan retry 3, alert keluar sekitar 3 menit setelah status baru konsisten.</p>
+        </section>
+
+        <section className="panel">
           <h2>Add Domain</h2>
           <form onSubmit={addDomain} className="row">
             <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" />
@@ -168,12 +202,13 @@ function Dashboard({ onLogout }) {
         <section className="panel">
           <h2>Domains</h2>
           <table>
-            <thead><tr><th>Domain</th><th>Status</th><th>Last Checked</th><th>Active</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Status</th><th>Last Status</th><th>Last Checked</th><th>Active</th></tr></thead>
             <tbody>
               {domains.map((d) => (
                 <tr key={d.id}>
                   <td>{d.domain}</td>
                   <td><Badge status={d.global_status}/></td>
+                  <td>{d.last_status || "-"}</td>
                   <td>{d.last_checked_at ? new Date(d.last_checked_at).toLocaleString() : "-"}</td>
                   <td>{d.is_active ? "Yes" : "No"}</td>
                 </tr>
