@@ -1,8 +1,10 @@
 const axios = require("axios");
+const { getRuntimeSettings } = require("./runtimeSettings");
 
 async function sendTelegram(message) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const settings = getRuntimeSettings();
+  const token = settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = settings.telegram_chat_id || process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) return false;
 
