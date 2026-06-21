@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut, Settings, Send } from "lucide-react";
+import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut, Settings, Send, Download, Trash2, Pencil, Power } from "lucide-react";
 import "./style.css";
 
 async function api(url, options = {}) {
@@ -11,11 +11,7 @@ async function api(url, options = {}) {
   });
 
   let data = {};
-  try {
-    data = await res.json();
-  } catch (_) {
-    data = {};
-  }
+  try { data = await res.json(); } catch (_) { data = {}; }
 
   if (!res.ok) {
     const error = new Error(data.error || "Request failed");
@@ -40,7 +36,6 @@ function Login({ onLogin }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-
     try {
       await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
       await onLogin();
@@ -70,6 +65,7 @@ function Dashboard({ onLogout }) {
   const [domains, setDomains] = useState([]);
   const [results, setResults] = useState([]);
   const [domain, setDomain] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [bulk, setBulk] = useState("");
   const [proxy, setProxy] = useState({ name: "", provider_name: "", proxy_url: "", proxy_type: "http" });
   const [proxies, setProxies] = useState([]);
@@ -102,7 +98,7 @@ function Dashboard({ onLogout }) {
     e.preventDefault();
     const saved = await api("/api/settings", { method: "POST", body: JSON.stringify(settings) });
     setSettings(saved);
-    setNotice("Settings saved. Scheduler interval update applies after server restart/redeploy. Retry and keywords apply immediately.");
+    setNotice("Settings saved permanently to Neon. Retry and keywords apply immediately. Interval applies after restart/redeploy.");
   }
 
   async function sendTelegramTest() {
@@ -113,14 +109,39 @@ function Dashboard({ onLogout }) {
 
   async function addDomain(e) {
     e.preventDefault();
-    await api("/api/domains", { method: "POST", body: JSON.stringify({ domain }) });
+    await api("/api/domains", { method: "POST", body: JSON.stringify({ domain, project_name: projectName }) });
     setDomain("");
+    setProjectName("");
+    setNotice("Domain saved.");
     load();
   }
 
   async function bulkImport() {
     await api("/api/domains/bulk", { method: "POST", body: JSON.stringify({ text: bulk }) });
     setBulk("");
+    setNotice("Bulk import selesai.");
+    load();
+  }
+
+  async function editDomain(d) {
+    const nextDomain = window.prompt("Edit domain", d.domain);
+    if (!nextDomain) return;
+    const nextProject = window.prompt("Project name", d.project_name || "") ?? d.project_name;
+    await api(`/api/domains/${d.id}`, { method: "PATCH", body: JSON.stringify({ domain: nextDomain, project_name: nextProject }) });
+    setNotice("Domain updated.");
+    load();
+  }
+
+  async function toggleDomain(d) {
+    await api(`/api/domains/${d.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !d.is_active }) });
+    setNotice(d.is_active ? "Domain paused." : "Domain activated.");
+    load();
+  }
+
+  async function deleteDomain(d) {
+    if (!window.confirm(`Delete ${d.domain}? History check untuk domain ini ikut terhapus.`)) return;
+    await api(`/api/domains/${d.id}`, { method: "DELETE" });
+    setNotice("Domain deleted.");
     load();
   }
 
@@ -128,6 +149,14 @@ function Dashboard({ onLogout }) {
     e.preventDefault();
     await api("/api/proxies", { method: "POST", body: JSON.stringify(proxy) });
     setProxy({ name: "", provider_name: "", proxy_url: "", proxy_type: "http" });
+    setNotice("Proxy checker saved.");
+    load();
+  }
+
+  async function deleteProxy(p) {
+    if (!window.confirm(`Delete proxy ${p.name}?`)) return;
+    await api(`/api/proxies/${p.id}`, { method: "DELETE" });
+    setNotice("Proxy deleted.");
     load();
   }
 
@@ -136,6 +165,10 @@ function Dashboard({ onLogout }) {
     await api("/api/check/manual", { method: "POST" });
     setNotice("Manual check selesai.");
     load();
+  }
+
+  function exportCsv(path) {
+    window.open(path, "_blank");
   }
 
   async function logout() {
@@ -150,6 +183,8 @@ function Dashboard({ onLogout }) {
         <p>Multi-checker domain monitor</p>
         <button onClick={manualCheck}><RefreshCw size={16}/> Manual Check</button>
         <button onClick={sendTelegramTest}><Send size={16}/> Telegram Test</button>
+        <button onClick={() => exportCsv("/api/export/domains.csv")}><Download size={16}/> Export Domains</button>
+        <button onClick={() => exportCsv("/api/export/results.csv")}><Download size={16}/> Export History</button>
         <button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>
         {notice ? <p className="sideNotice">{notice}</p> : null}
       </aside>
@@ -170,13 +205,14 @@ function Dashboard({ onLogout }) {
             <label className="wide"><span>Status keywords</span><input value={settings.status_keywords} onChange={(e) => setSettings({...settings, status_keywords:e.target.value})} /></label>
             <button>Save Settings</button>
           </form>
-          <p className="hint">3x check = interval × retry. Jika interval 60 detik dan retry 3, alert keluar sekitar 3 menit setelah status baru konsisten.</p>
+          <p className="hint">Setting sekarang tersimpan permanen di Neon. 3x check = interval × retry. Default 60 detik × 3 = sekitar 3 menit.</p>
         </section>
 
         <section className="panel">
           <h2>Add Domain</h2>
-          <form onSubmit={addDomain} className="row">
+          <form onSubmit={addDomain} className="domainForm">
             <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" />
+            <input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Project name optional" />
             <button>Add</button>
           </form>
           <textarea value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder="Bulk import, one domain per line" />
@@ -184,17 +220,28 @@ function Dashboard({ onLogout }) {
         </section>
 
         <section className="panel">
-          <h2>Domains</h2>
+          <div className="panelHead">
+            <h2>Domains</h2>
+            <button className="smallBtn" onClick={() => exportCsv("/api/export/domains.csv")}><Download size={15}/> CSV</button>
+          </div>
           <table>
-            <thead><tr><th>Domain</th><th>Status</th><th>Last Status</th><th>Last Checked</th><th>Active</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Project</th><th>Status</th><th>Last Status</th><th>Last Checked</th><th>Active</th><th>Actions</th></tr></thead>
             <tbody>
               {domains.map((d) => (
                 <tr key={d.id}>
-                  <td>{d.domain}</td>
+                  <td className="domainCell">{d.domain}</td>
+                  <td>{d.project_name || "-"}</td>
                   <td><Badge status={d.global_status}/></td>
                   <td>{d.last_status || "-"}</td>
                   <td>{d.last_checked_at ? new Date(d.last_checked_at).toLocaleString() : "-"}</td>
                   <td>{d.is_active ? "Yes" : "No"}</td>
+                  <td>
+                    <div className="actions">
+                      <button className="iconBtn" title="Edit" onClick={() => editDomain(d)}><Pencil size={14}/></button>
+                      <button className="iconBtn" title="Active/Pause" onClick={() => toggleDomain(d)}><Power size={14}/></button>
+                      <button className="iconBtn danger" title="Delete" onClick={() => deleteDomain(d)}><Trash2 size={14}/></button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -213,21 +260,29 @@ function Dashboard({ onLogout }) {
             </select>
             <button>Add Proxy</button>
           </form>
-          <div className="chips">{proxies.map((p) => <span key={p.id}>{p.provider_name}: {p.name}</span>)}</div>
+          <div className="chips">
+            {proxies.map((p) => (
+              <span key={p.id}>{p.provider_name}: {p.name}<button className="chipDelete" onClick={() => deleteProxy(p)}>×</button></span>
+            ))}
+          </div>
         </section>
 
         <section className="panel">
-          <h2>History</h2>
+          <div className="panelHead">
+            <h2>History</h2>
+            <button className="smallBtn" onClick={() => exportCsv("/api/export/results.csv")}><Download size={15}/> CSV</button>
+          </div>
           <table>
-            <thead><tr><th>Time</th><th>Domain</th><th>Checker</th><th>Status</th><th>HTTP</th><th>Reason</th></tr></thead>
+            <thead><tr><th>Time</th><th>Domain</th><th>Checker</th><th>Status</th><th>HTTP</th><th>Latency</th><th>Reason</th></tr></thead>
             <tbody>
               {results.map((r) => (
                 <tr key={r.id}>
                   <td>{new Date(r.checked_at).toLocaleString()}</td>
-                  <td>{r.domain}</td>
+                  <td className="domainCell">{r.domain}</td>
                   <td>{r.provider_name}</td>
                   <td><Badge status={r.status}/></td>
                   <td>{r.http_status || "-"}</td>
+                  <td>{r.latency_ms ? `${r.latency_ms}ms` : "-"}</td>
                   <td>{r.reason}</td>
                 </tr>
               ))}
