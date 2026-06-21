@@ -121,9 +121,23 @@ textarea {
   font-size: 22px;
   letter-spacing: -.3px;
 }
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.panelHead h2 { margin: 0; }
 .row {
   display: grid;
   grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.domainForm {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr auto;
   gap: 10px;
   align-items: center;
 }
@@ -171,6 +185,11 @@ th {
   text-transform: uppercase;
   letter-spacing: .04em;
 }
+.domainCell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #f0f6fc;
+  font-weight: 700;
+}
 .badge {
   padding: 6px 10px;
   border-radius: 999px;
@@ -184,6 +203,30 @@ th {
 .badge.warning { background: #9e6a03; color: #ffdf8b; }
 .badge.blocked { background: #8e1519; color: #ffdcd7; }
 .badge.unknown { background: #30363d; color: #c9d1d9; }
+.actions {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.iconBtn, .smallBtn {
+  background: #21262d;
+  border: 1px solid #30363d;
+}
+.iconBtn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 10px;
+}
+.smallBtn {
+  padding: 8px 11px;
+  border-radius: 10px;
+}
+.danger {
+  background: #45161a;
+  color: #ffdcd7;
+  border-color: #8e1519;
+}
 .chips {
   display:flex;
   gap:8px;
@@ -193,8 +236,20 @@ th {
 .chips span {
   background:#0d1117;
   border:1px solid #30363d;
-  padding:6px 10px;
+  padding:6px 8px 6px 10px;
   border-radius:999px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.chipDelete {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  background: #45161a;
+  color: #ffdcd7;
+  border: 1px solid #8e1519;
 }
 .ghostBtn {
   background: #21262d;
@@ -271,6 +326,7 @@ th {
   .settingsGrid { grid-template-columns: 1fr; }
   .settingsGrid .wide { grid-column: auto; }
   .grid { grid-template-columns: 1fr 1fr; }
+  .domainForm { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .app { display: block; }
@@ -285,4 +341,5 @@ th {
   .cards { grid-template-columns: 1fr; }
   .grid { grid-template-columns: 1fr; }
   .row { grid-template-columns: 1fr; }
+  .panelHead { align-items: flex-start; flex-direction: column; }
 }
