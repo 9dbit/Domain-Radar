@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
 const { pool } = require("./db");
 const { runChecks, startScheduler } = require("./scheduler");
 const { normalizeDomain } = require("./checker");
@@ -10,6 +11,15 @@ const { normalizeDomain } = require("./checker");
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
+
+app.get("/api/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true, database: "connected" });
+  } catch (err) {
+    res.status(500).json({ ok: false, database: "error", message: err.message });
+  }
+});
 
 app.get("/api/overview", async (req, res) => {
   const { rows } = await pool.query(`
@@ -109,9 +119,14 @@ app.post("/api/check/manual", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.use(express.static(path.join(__dirname, "../dist")));
+const distPath = path.join(__dirname, "../dist");
+app.use(express.static(distPath));
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../dist/index.html"));
+  const indexPath = path.join(distPath, "index.html");
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  res.json({ ok: true, message: "API server is running. Run npm run client for the dashboard during development." });
 });
 
 const port = process.env.PORT || 3000;
