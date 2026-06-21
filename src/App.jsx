@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut, Settings } from "lucide-react";
+import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut, Settings, Send } from "lucide-react";
 import "./style.css";
 
 async function api(url, options = {}) {
@@ -57,13 +57,7 @@ function Login({ onLogin }) {
         <div className="loginIcon"><Lock size={26} /></div>
         <h1>Domain Radar</h1>
         <p>Masuk ke dashboard monitoring.</p>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Admin password"
-          autoFocus
-        />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Admin password" autoFocus />
         {error ? <div className="errorBox">{error}</div> : null}
         <button type="submit" disabled={loading}>{loading ? "Checking..." : "Login"}</button>
       </form>
@@ -80,20 +74,12 @@ function Dashboard({ onLogout }) {
   const [proxy, setProxy] = useState({ name: "", provider_name: "", proxy_url: "", proxy_type: "http" });
   const [proxies, setProxies] = useState([]);
   const [notice, setNotice] = useState("");
-  const [settings, setSettings] = useState({
-    check_interval_seconds: "60",
-    retry_confirmations: "3",
-    status_keywords: "internetpositif,trustpositif,nawala"
-  });
+  const [settings, setSettings] = useState({ check_interval_seconds: "60", retry_confirmations: "3", status_keywords: "internetpositif,trustpositif,nawala" });
 
   async function load() {
     try {
       const [overviewData, domainData, resultData, proxyData, settingsData] = await Promise.all([
-        api("/api/overview"),
-        api("/api/domains"),
-        api("/api/results"),
-        api("/api/proxies"),
-        api("/api/settings")
+        api("/api/overview"), api("/api/domains"), api("/api/results"), api("/api/proxies"), api("/api/settings")
       ]);
       setOverview(overviewData || {});
       setDomains(Array.isArray(domainData) ? domainData : []);
@@ -117,6 +103,12 @@ function Dashboard({ onLogout }) {
     const saved = await api("/api/settings", { method: "POST", body: JSON.stringify(settings) });
     setSettings(saved);
     setNotice("Settings saved. Scheduler interval update applies after server restart/redeploy. Retry and keywords apply immediately.");
+  }
+
+  async function sendTelegramTest() {
+    setNotice("Sending Telegram test...");
+    const result = await api("/api/telegram/test", { method: "POST" });
+    setNotice(result.ok ? "Telegram test sent." : "Telegram test failed. Check bot token and chat id.");
   }
 
   async function addDomain(e) {
@@ -157,6 +149,7 @@ function Dashboard({ onLogout }) {
         <h1>Domain Radar</h1>
         <p>Multi-checker domain monitor</p>
         <button onClick={manualCheck}><RefreshCw size={16}/> Manual Check</button>
+        <button onClick={sendTelegramTest}><Send size={16}/> Telegram Test</button>
         <button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>
         {notice ? <p className="sideNotice">{notice}</p> : null}
       </aside>
@@ -172,18 +165,9 @@ function Dashboard({ onLogout }) {
         <section className="panel">
           <h2><Settings size={20}/> Settings</h2>
           <form onSubmit={saveSettings} className="settingsGrid">
-            <label>
-              <span>Check interval seconds</span>
-              <input value={settings.check_interval_seconds} onChange={(e) => setSettings({...settings, check_interval_seconds:e.target.value})} />
-            </label>
-            <label>
-              <span>Retry confirmations</span>
-              <input value={settings.retry_confirmations} onChange={(e) => setSettings({...settings, retry_confirmations:e.target.value})} />
-            </label>
-            <label className="wide">
-              <span>Status keywords</span>
-              <input value={settings.status_keywords} onChange={(e) => setSettings({...settings, status_keywords:e.target.value})} />
-            </label>
+            <label><span>Check interval seconds</span><input value={settings.check_interval_seconds} onChange={(e) => setSettings({...settings, check_interval_seconds:e.target.value})} /></label>
+            <label><span>Retry confirmations</span><input value={settings.retry_confirmations} onChange={(e) => setSettings({...settings, retry_confirmations:e.target.value})} /></label>
+            <label className="wide"><span>Status keywords</span><input value={settings.status_keywords} onChange={(e) => setSettings({...settings, status_keywords:e.target.value})} /></label>
             <button>Save Settings</button>
           </form>
           <p className="hint">3x check = interval × retry. Jika interval 60 detik dan retry 3, alert keluar sekitar 3 menit setelah status baru konsisten.</p>
@@ -229,9 +213,7 @@ function Dashboard({ onLogout }) {
             </select>
             <button>Add Proxy</button>
           </form>
-          <div className="chips">
-            {proxies.map((p) => <span key={p.id}>{p.provider_name}: {p.name}</span>)}
-          </div>
+          <div className="chips">{proxies.map((p) => <span key={p.id}>{p.provider_name}: {p.name}</span>)}</div>
         </section>
 
         <section className="panel">
@@ -274,25 +256,12 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  useEffect(() => { checkAuth(); }, []);
 
   if (!checked) return <div className="loading">Loading Domain Radar...</div>;
-
-  if (!authenticated) {
-    return (
-      <>
-        <Login onLogin={async () => { setAuthenticated(true); }} />
-        {bootError ? <div className="bootError">{bootError}</div> : null}
-      </>
-    );
-  }
-
+  if (!authenticated) return (<><Login onLogin={async () => { setAuthenticated(true); }} />{bootError ? <div className="bootError">{bootError}</div> : null}</>);
   return <Dashboard onLogout={() => setAuthenticated(false)} />;
 }
 
 const rootEl = document.getElementById("root");
-if (rootEl) {
-  createRoot(rootEl).render(<App />);
-}
+if (rootEl) createRoot(rootEl).render(<App />);
