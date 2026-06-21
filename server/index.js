@@ -8,6 +8,7 @@ const session = require("express-session");
 const { pool } = require("./db");
 const { runChecks, startScheduler } = require("./scheduler");
 const { normalizeDomain } = require("./checker");
+const settingsRoutes = require("./settingsRoutes");
 
 const app = express();
 const sessionSecret = process.env.SESSION_SECRET || "domain-radar-dev-session-secret";
@@ -71,6 +72,8 @@ app.post("/api/auth/logout", (req, res) => {
     res.json({ ok: true });
   });
 });
+
+app.use("/api/settings", requireAdmin, settingsRoutes);
 
 app.get("/api/overview", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
