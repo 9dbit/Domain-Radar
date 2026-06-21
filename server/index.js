@@ -9,6 +9,7 @@ const { pool } = require("./db");
 const { runChecks, startScheduler } = require("./scheduler");
 const { normalizeDomain } = require("./checker");
 const settingsRoutes = require("./settingsRoutes");
+const { loadSettings } = require("./settingsStore");
 const { sendTelegram } = require("./telegram");
 
 const app = express();
@@ -38,6 +39,22 @@ function requireAdmin(req, res, next) {
   if (!adminPassword) return next();
   if (req.session && req.session.isAdmin) return next();
   return res.status(401).json({ error: "Unauthorized" });
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return "";
+  const text = String(value).replace(/"/g, '""');
+  return /[",\n\r]/.test(text) ? `"${text}"` : text;
+}
+
+function sendCsv(res, filename, rows) {
+  const headers = rows.length ? Object.keys(rows[0]) : [];
+  const body = [headers.join(",")]
+    .concat(rows.map((row) => headers.map((h) => csvEscape(row[h])).join(",")))
+    .join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename=\"${filename}\"`);
+  res.send(body);
 }
 
 app.get("/api/health", async (req, res) => {
@@ -134,12 +151,13 @@ app.post("/api/domains/bulk", requireAdmin, async (req, res) => {
 });
 
 app.patch("/api/domains/:id", requireAdmin, async (req, res) => {
-  const { is_active, project_name } = req.body;
+  const { domain, is_active, project_name } = req.body;
+  const cleanDomain = domain !== undefined ? normalizeDomain(domain) : undefined;
   const { rows } = await pool.query(
     `UPDATE domains 
-     SET is_active=COALESCE($1,is_active), project_name=COALESCE($2,project_name)
-     WHERE id=$3 RETURNING *`,
-    [is_active, project_name, req.params.id]
+     SET domain=COALESCE($1,domain), is_active=COALESCE($2,is_active), project_name=COALESCE($3,project_name)
+     WHERE id=$4 RETURNING *`,
+    [cleanDomain || null, is_active, project_name, req.params.id]
   );
   res.json(rows[0]);
 });
@@ -164,6 +182,11 @@ app.post("/api/proxies", requireAdmin, async (req, res) => {
   res.json(rows[0]);
 });
 
+app.delete("/api/proxies/:id", requireAdmin, async (req, res) => {
+  await pool.query("DELETE FROM proxies WHERE id=$1", [req.params.id]);
+  res.json({ ok: true });
+});
+
 app.get("/api/results", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT r.*, d.domain
@@ -175,9 +198,30 @@ app.get("/api/results", requireAdmin, async (req, res) => {
   res.json(rows);
 });
 
+app.get("/api/export/domains.csv", requireAdmin, async (req, res) => {
+  const { rows } = await pool.query("SELECT id, domain, project_name, is_active, global_status, last_status, last_checked_at, created_at FROM domains ORDER BY id DESC");
+  sendCsv(res, "domains.csv", rows);
+});
+
+app.get("/api/export/results.csv", requireAdmin, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT r.checked_at, d.domain, r.provider_name, r.checker_type, r.status, r.http_status, r.latency_ms, r.final_url, r.reason
+    FROM check_results r
+    JOIN domains d ON d.id = r.domain_id
+    ORDER BY r.checked_at DESC
+    LIMIT 5000
+  `);
+  sendCsv(res, "check-results.csv", rows);
+});
+
 app.post("/api/check/manual", requireAdmin, async (req, res) => {
   await runChecks();
   res.json({ ok: true });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: err.message || "Internal server error" });
 });
 
 const distPath = path.join(__dirname, "../dist");
@@ -191,7 +235,19 @@ app.get("*", (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server running on ${port}`);
-  startScheduler();
-});
+
+async function boot() {
+  try {
+    await loadSettings();
+    console.log("Settings loaded from database");
+  } catch (err) {
+    console.error("Settings load failed, using env defaults:", err.message);
+  }
+
+  app.listen(port, () => {
+    console.log(`Server running on ${port}`);
+    startScheduler();
+  });
+}
+
+boot();
