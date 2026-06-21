@@ -11,6 +11,8 @@ const { normalizeDomain, checkDomain, calculateGlobalStatus } = require("./check
 const settingsRoutes = require("./settingsRoutes");
 const projectRoutes = require("./projectRoutes");
 const rankRoutes = require("./rankRoutes");
+const { router: nodeRoutes } = require("./nodeRoutes");
+const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { loadSettings } = require("./settingsStore");
 const { sendTelegram } = require("./telegram");
 
@@ -30,8 +32,10 @@ function parseBulkLine(line) { const raw = String(line || "").trim(); if (!raw) 
 
 async function runSingleDomainCheck(domainRow) {
   const proxies = (await pool.query("SELECT * FROM proxies WHERE is_active=true")).rows;
+  const nodes = await getActiveNodes();
   const checks = [checkDomain(domainRow.domain, { type: "direct", provider_name: "Direct" })];
   for (const proxy of proxies) checks.push(checkDomain(domainRow.domain, { type: "proxy", provider_name: proxy.provider_name || proxy.name, proxy }));
+  for (const node of nodes) checks.push(checkViaNode(domainRow.domain, node));
   const results = await Promise.all(checks);
   for (const result of results) {
     await pool.query(`INSERT INTO check_results (domain_id, checker_type, provider_name, status, http_status, final_url, dns_result, latency_ms, reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [domainRow.id, result.checker_type, result.provider_name, result.status, result.http_status, result.final_url, result.dns_result, result.latency_ms, result.reason]);
@@ -55,7 +59,7 @@ app.post("/api/auth/logout", (req, res) => { req.session.destroy(() => { res.cle
 app.use("/api/settings", requireAdmin, settingsRoutes);
 app.use("/api/projects", requireAdmin, projectRoutes);
 app.use("/api/rank", requireAdmin, rankRoutes);
-
+app.use("/api/nodes", requireAdmin, nodeRoutes);
 app.post("/api/telegram/test", requireAdmin, async (req, res) => { const message = `DOMAIN RADAR TEST\n\nTelegram alert is working.\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`; const sent = await sendTelegram(message); res.json({ ok: sent }); });
 app.get("/api/overview", requireAdmin, async (req, res) => { const { rows } = await pool.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE global_status='working')::int AS working, COUNT(*) FILTER (WHERE global_status='warning')::int AS warning, COUNT(*) FILTER (WHERE global_status='blocked')::int AS blocked, MAX(last_checked_at) AS last_checked FROM domains`); res.json(rows[0]); });
 app.get("/api/alerts", requireAdmin, async (req, res) => { const { rows } = await pool.query(`SELECT a.*, d.domain, d.project_name FROM alerts a LEFT JOIN domains d ON d.id = a.domain_id ORDER BY a.created_at DESC LIMIT 100`); res.json(rows); });
