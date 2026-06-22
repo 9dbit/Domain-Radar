@@ -100,6 +100,36 @@ async function upsertTelemetry(node, telemetryRaw, req) {
   }
 }
 
+function normalizeDomainStatus(status) {
+  const value = String(status || "unknown").toLowerCase().trim();
+  if (["working", "normal", "online", "ok", "success"].includes(value)) return "working";
+  if (["blocked", "block", "down", "offline"].includes(value)) return "blocked";
+  if (["warning", "warn", "timeout", "error"].includes(value)) return "warning";
+  return value || "unknown";
+}
+
+async function syncDomainStatusFromTask(taskId, node, result) {
+  const { rows } = await pool.query(
+    "SELECT domain FROM provider_node_tasks WHERE id=$1 AND node_id=$2 LIMIT 1",
+    [taskId, node.id]
+  );
+  const domain = rows[0]?.domain;
+  if (!domain) return;
+
+  const status = normalizeDomainStatus(result?.status);
+  const reason = String(result?.reason || result?.final_url || status || "checked").slice(0, 500);
+  const lastStatus = `${node.name}: ${reason}`.slice(0, 700);
+
+  await pool.query(
+    `UPDATE domains
+     SET global_status=$1,
+         last_status=$2,
+         last_checked_at=NOW()
+     WHERE domain=$3`,
+    [status, lastStatus, domain]
+  );
+}
+
 async function enqueueNodeTask(node, domain) {
   await ensureTaskTable();
   const id = randomUUID();
@@ -160,12 +190,14 @@ router.post("/result", async (req, res, next) => {
     const taskId = String(req.body.task_id || "").trim();
     if (!taskId) return res.status(400).json({ error: "task_id required" });
 
+    const result = req.body.result || {};
     await pool.query(
       `UPDATE provider_node_tasks
        SET status='done', result=$1::jsonb, completed_at=NOW()
        WHERE id=$2 AND node_id=$3`,
-      [JSON.stringify(req.body.result || {}), taskId, node.id]
+      [JSON.stringify(result), taskId, node.id]
     );
+    await syncDomainStatusFromTask(taskId, node, result);
     await pool.query("UPDATE provider_nodes SET last_health_status='online', last_ping_at=NOW() WHERE id=$1", [node.id]);
     await upsertTelemetry(node, req.body.telemetry || {}, req);
     res.json({ ok: true });
