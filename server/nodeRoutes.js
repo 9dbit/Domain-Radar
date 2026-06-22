@@ -58,11 +58,23 @@ function pollingPresets() {
   ].map((n) => ({ ...n, endpoint_url: `poll://${n.name}`, secret_key: defaultSecret(n.name) }));
 }
 
+function quantizeBatteryPercent(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.max(0, Math.min(100, n));
+  if (clamped === 0) return 0;
+  if (clamped < 10) return 10;
+  return Math.floor(clamped / 10) * 10;
+}
+
 function enrichNodeForUi(node) {
   const originalProviderName = node.provider_name;
   const originalNetworkType = node.network_type;
-  const hasBattery = node.battery_percent !== null && node.battery_percent !== undefined;
-  const batteryLabel = hasBattery ? `${node.battery_percent}%` : "n/a";
+  const rawBatteryPercent = node.battery_percent;
+  const visualBatteryPercent = quantizeBatteryPercent(rawBatteryPercent);
+  const hasBattery = visualBatteryPercent !== null && visualBatteryPercent !== undefined;
+  const batteryLabel = hasBattery ? `${visualBatteryPercent}%` : "n/a";
   const chargingLabel = node.is_charging === null || node.is_charging === undefined ? "n/a" : node.is_charging ? "Yes" : "No";
   const lastSeenLabel = node.telemetry_last_seen_at ? new Date(node.telemetry_last_seen_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "never";
   const signalLabel = node.signal_label || "n/a";
@@ -71,6 +83,8 @@ function enrichNodeForUi(node) {
     ...node,
     raw_provider_name: originalProviderName,
     raw_network_type: originalNetworkType,
+    raw_battery_percent: rawBatteryPercent,
+    battery_percent: visualBatteryPercent,
     provider_name: originalProviderName,
     network_type: iconLine,
     battery_label: batteryLabel,
