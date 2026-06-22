@@ -33,22 +33,22 @@ function normalizeDomain(domain) {
 function classifyNetworkError(err, stage = "HTTP") {
   const code = err?.code || "";
   const msg = err?.message || "Unknown error";
-  if (code === "ENOTFOUND") return "DNS not found / domain tidak resolve";
+  if (code === "ENOTFOUND") return "DNS not found / domain does not resolve";
   if (code === "ENODATA") return "DNS has no usable record";
   if (code === "EAI_AGAIN") return "DNS temporary failure / retry later";
-  if (code === "ETIMEDOUT" || code === "ECONNABORTED") return `${stage} timeout / koneksi terlalu lama`;
-  if (code === "ECONNREFUSED") return `${stage} connection refused / koneksi ditolak`;
-  if (code === "ECONNRESET") return `${stage} connection reset / koneksi diputus`;
+  if (code === "ETIMEDOUT" || code === "ECONNABORTED") return `${stage} timeout / connection took too long`;
+  if (code === "ECONNREFUSED") return `${stage} connection refused`;
+  if (code === "ECONNRESET") return `${stage} connection reset by peer`;
   if (code === "EHOSTUNREACH" || code === "ENETUNREACH") return `${stage} network unreachable`;
   if (code === "CERT_HAS_EXPIRED" || code === "DEPTH_ZERO_SELF_SIGNED_CERT" || code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") return `SSL certificate issue: ${code}`;
-  if (/socket hang up/i.test(msg)) return `${stage} socket hang up / koneksi diputus server`;
+  if (/socket hang up/i.test(msg)) return `${stage} socket hang up / server closed the connection`;
   return `${stage} error: ${code || msg}`;
 }
 
 function classifyHttpStatus(statusCode) {
-  if (statusCode === 403) return "HTTP 403 forbidden / akses ditolak";
-  if (statusCode === 451) return "HTTP 451 unavailable for legal reasons / kemungkinan diblokir";
-  if (statusCode === 429) return "HTTP 429 rate limited / terlalu banyak request";
+  if (statusCode === 403) return "HTTP 403 forbidden / access denied";
+  if (statusCode === 451) return "HTTP 451 unavailable for legal reasons / possible blocking";
+  if (statusCode === 429) return "HTTP 429 rate limited / too many requests";
   if (statusCode >= 500) return `HTTP ${statusCode} server error`;
   if (statusCode >= 400) return `HTTP ${statusCode} client error`;
   return `HTTP ${statusCode}`;
