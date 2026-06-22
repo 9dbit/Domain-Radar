@@ -92,4 +92,65 @@ th { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing:
 .bootError { position: fixed; left: 16px; right: 16px; bottom: 16px; background: #8e1519; color: #ffdcd7; border: 1px solid #ff7b72; padding: 12px; border-radius: 12px; z-index: 20; }
 @media (max-width: 1250px) { .projectHeaderGrid { grid-template-columns: 1fr repeat(2, minmax(110px, .4fr)); } .projectHeaderGrid > div:last-child { grid-column:auto; } }
 @media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, 1fr); } .settingsGrid { grid-template-columns: 1fr; } .settingsGrid .wide { grid-column: auto; } .grid { grid-template-columns: 1fr 1fr; } .domainForm, .projectForm, .rankForm, .nodeForm, .createProjectForm { grid-template-columns: 1fr; } .createProjectForm .wide { grid-column:auto; } .projectGrid { grid-template-columns: repeat(2, 1fr); } .filters { grid-template-columns: 1fr; } .projectAddRow { grid-template-columns:1fr; } }
-@media (max-width: 760px) { .app { display: block; } aside { width: 100%; height: auto; position: relative; display: grid; grid-template-columns: 1fr; } main { padding: 16px; } .cards { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } .row { grid-template-columns: 1fr; } .panelHead { align-items: flex-start; flex-direction: column; } .projectGrid { grid-template-columns: 1fr; } .tabs { width:100%; } .projectHeaderGrid { grid-template-columns:1fr; } }
+@media (max-width: 760px) {
+  html, body { width: 100%; overflow-x: hidden; }
+  body { font-size: 14px; }
+  .app { display: block; width: 100%; overflow-x: hidden; }
+  aside { width: 100%; height: auto; position: relative; padding: 18px 16px; border-right: 0; border-bottom: 1px solid #242b35; }
+  aside h1 { font-size: 28px; margin-bottom: 6px; }
+  aside p { font-size: 13px; margin-bottom: 14px; }
+  aside button { min-height: 44px; margin-bottom: 8px; border-radius: 13px; padding: 10px 12px; font-size: 14px; }
+  main { width: 100%; padding: 14px 12px 84px; overflow-x: hidden; }
+  .cards { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .card { min-height: 82px; padding: 13px; border-radius: 15px; }
+  .card b { font-size: 24px; }
+  .card span { font-size: 12px; }
+  .panel, .projectDetail { padding: 14px; border-radius: 16px; margin-bottom: 14px; overflow: visible; }
+  .panel h2, .projectHeaderGrid h2 { font-size: 20px; line-height: 1.15; margin-bottom: 8px; }
+  .panelHead { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .tabs { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tabs button { width: 100%; }
+  .createProjectForm, .domainForm, .projectForm, .rankForm, .nodeForm, .grid, .settingsGrid, .filters, .projectAddRow { grid-template-columns: 1fr; gap: 9px; }
+  .createProjectForm .wide, .settingsGrid .wide { grid-column: auto; }
+  input, textarea, select { min-height: 44px; padding: 10px 12px; border-radius: 13px; font-size: 16px; }
+  textarea { min-height: 78px; }
+  button { min-height: 42px; border-radius: 13px; }
+  .hint { font-size: 13px; padding: 10px 12px; margin: 12px 0; }
+  .sideNotice { font-size: 12px; padding: 10px; }
+  .projectStack { gap: 14px; }
+  .projectHeaderGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .projectHeaderGrid > div:first-child { grid-column: 1 / -1; }
+  .projectHeaderGrid > div:last-child { grid-column: 1 / -1; }
+  .projectMetric { min-height: auto; padding: 10px; border-radius: 13px; }
+  .projectMetric b { font-size: 20px; }
+  .projectMetric span { font-size: 10px; }
+  .projectAddBox { padding: 11px; gap: 9px; margin: 10px 0 12px; border-radius: 14px; }
+  table, thead, tbody, tr, th, td { display: block; width: 100%; }
+  table { border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  thead { display: none; }
+  tbody { display: grid; gap: 10px; }
+  tr { background: #0f141c; border: 1px solid #2b3440; border-radius: 14px; padding: 11px; }
+  td { border-bottom: 0; padding: 5px 0; display: grid; grid-template-columns: 86px 1fr; gap: 10px; align-items: center; overflow-wrap: anywhere; }
+  td:nth-child(1)::before { content: "Domain"; }
+  td:nth-child(2)::before { content: "Project"; }
+  td:nth-child(3)::before { content: "Status"; }
+  td:nth-child(4)::before { content: "Last"; }
+  td:nth-child(5)::before { content: "Checked"; }
+  td:nth-child(6)::before { content: "Active"; }
+  td:nth-child(7)::before { content: "Actions"; }
+  td::before { color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; font-weight: 800; }
+  .domainCell { font-size: 13px; line-height: 1.35; word-break: break-word; }
+  .badge { width: fit-content; font-size: 10px; padding: 5px 9px; }
+  .actions { justify-content: flex-start; gap: 8px; flex-wrap: nowrap; }
+  .iconBtn { width: 36px; height: 36px; border-radius: 11px; }
+  .smallBtn { width: 100%; justify-content: center; }
+  .chips { gap: 7px; }
+  .chips span { width: 100%; justify-content: space-between; border-radius: 12px; }
+  .alertItem { grid-template-columns: 1fr; gap: 8px; }
+  .searchBox input { padding-left: 36px; }
+}
+@media (max-width: 390px) {
+  .cards { grid-template-columns: 1fr; }
+  td { grid-template-columns: 76px 1fr; gap: 8px; }
+  .projectHeaderGrid { grid-template-columns: 1fr; }
+}
