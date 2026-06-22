@@ -1,9 +1,16 @@
 const express = require("express");
 const axios = require("axios");
+const dns = require("dns").promises;
 const { pool } = require("./db");
 const { normalizeDomain } = require("./checker");
+const { sendTelegram } = require("./telegram");
 
 const router = express.Router();
+
+const DEFAULT_ALLOWED_EXTERNAL = [
+  "medium.com", "youtube.com", "facebook.com", "instagram.com", "tiktok.com", "reddit.com",
+  "behance.net", "github.com", "github.io", "linktr.ee", "heylink.me", "bit.ly", "x.com", "twitter.com"
+];
 
 async function ensureRankTables() {
   await pool.query(`
@@ -25,7 +32,7 @@ async function ensureRankTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rank_results (
       id SERIAL PRIMARY KEY,
-      keyword_id INTEGER REFERENCES rank_keywords(id) ON DELETE CASCADE,
+      keyword_id INTEGER,
       keyword TEXT NOT NULL,
       domain TEXT NOT NULL,
       position INTEGER,
@@ -35,146 +42,390 @@ async function ensureRankTables() {
       checked_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rank_keyword_groups (
+      id SERIAL PRIMARY KEY,
+      project_name TEXT DEFAULT '',
+      keyword TEXT NOT NULL,
+      keyword_lc TEXT NOT NULL UNIQUE,
+      is_active BOOLEAN DEFAULT TRUE,
+      last_checked_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rank_keyword_domains (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER REFERENCES rank_keyword_groups(id) ON DELETE CASCADE,
+      domain TEXT NOT NULL,
+      target_url TEXT DEFAULT '',
+      is_whitelisted BOOLEAN DEFAULT TRUE,
+      last_position INTEGER,
+      last_page INTEGER,
+      last_matched_url TEXT,
+      last_status TEXT DEFAULT 'pending',
+      last_checked_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(group_id, domain)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rank_scan_results (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER REFERENCES rank_keyword_groups(id) ON DELETE CASCADE,
+      keyword TEXT NOT NULL,
+      position INTEGER,
+      page INTEGER,
+      title TEXT,
+      link TEXT,
+      snippet TEXT,
+      host TEXT,
+      classification TEXT DEFAULT 'unknown',
+      reason TEXT DEFAULT '',
+      checked_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS domain_intel_cache (
+      domain TEXT PRIMARY KEY,
+      ip TEXT,
+      nameservers JSONB DEFAULT '[]'::jsonb,
+      registrar TEXT DEFAULT '',
+      abuse_email TEXT DEFAULT '',
+      network_name TEXT DEFAULT '',
+      asn TEXT DEFAULT '',
+      report_url TEXT DEFAULT '',
+      checked_at TIMESTAMP DEFAULT NOW(),
+      raw JSONB DEFAULT '{}'::jsonb
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rank_suspicious_seen (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER REFERENCES rank_keyword_groups(id) ON DELETE CASCADE,
+      host TEXT NOT NULL,
+      first_seen_at TIMESTAMP DEFAULT NOW(),
+      last_seen_at TIMESTAMP DEFAULT NOW(),
+      last_position INTEGER,
+      last_page INTEGER,
+      UNIQUE(group_id, host)
+    )
+  `);
 }
 
 function hostFromUrl(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
-  } catch (_) {
-    return "";
-  }
+  try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); }
+  catch (_) { return ""; }
 }
 
-function domainMatches(link, domain) {
-  const host = hostFromUrl(link);
+function domainMatches(linkOrHost, domain) {
+  const host = linkOrHost.includes("/") ? hostFromUrl(linkOrHost) : String(linkOrHost || "").replace(/^www\./, "").toLowerCase();
   const clean = normalizeDomain(domain).replace(/^www\./, "");
   return host === clean || host.endsWith(`.${clean}`);
 }
 
-async function checkKeyword(row) {
-  const key = process.env.GOOGLE_SEARCH_API_KEY;
-  const cx = process.env.GOOGLE_SEARCH_CX;
-  if (!key || !cx) {
-    throw new Error("Missing GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX");
+function parseDomainList(value) {
+  return String(value || "")
+    .split(/[\n,;\t ]+/)
+    .map((x) => normalizeDomain(x.trim()))
+    .filter(Boolean);
+}
+
+function allowedExternalDomains() {
+  const envList = String(process.env.RANK_ALLOWED_EXTERNAL_DOMAINS || "")
+    .split(/[,\n;]/)
+    .map((x) => normalizeDomain(x.trim()))
+    .filter(Boolean);
+  return [...new Set([...DEFAULT_ALLOWED_EXTERNAL, ...envList])];
+}
+
+function keywordTokens(keyword) {
+  return String(keyword || "").toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length >= 3);
+}
+
+function classifyResult(item, whitelistDomains, allowedExternal) {
+  const host = hostFromUrl(item.link || "");
+  const title = String(item.title || "").toLowerCase();
+  const snippet = String(item.snippet || "").toLowerCase();
+  const link = String(item.link || "").toLowerCase();
+  const keyword = String(item.keyword || "").toLowerCase();
+  const tokens = keywordTokens(keyword);
+
+  if (!host) return { classification: "unknown", reason: "No host detected" };
+  if (whitelistDomains.some((d) => domainMatches(host, d))) return { classification: "whitelisted", reason: "Matched monitored whitelist domain" };
+  if (allowedExternal.some((d) => domainMatches(host, d))) return { classification: "external_safe", reason: "Matched allowed external platform" };
+
+  const brandSignal = tokens.some((t) => host.includes(t) || title.includes(t) || snippet.includes(t) || link.includes(t));
+  if (brandSignal) return { classification: "suspicious", reason: "Non-whitelisted result contains brand/keyword signal" };
+  return { classification: "unknown", reason: "Non-whitelisted result" };
+}
+
+async function upsertKeywordGroup({ project, keyword, domains, targetUrl }) {
+  const keywordClean = String(keyword || "").trim();
+  const keywordLc = keywordClean.toLowerCase();
+  if (!keywordClean) throw new Error("Keyword required");
+
+  const groupRes = await pool.query(
+    `INSERT INTO rank_keyword_groups (project_name, keyword, keyword_lc)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (keyword_lc) DO UPDATE SET
+       project_name=COALESCE(NULLIF(EXCLUDED.project_name,''), rank_keyword_groups.project_name),
+       keyword=EXCLUDED.keyword
+     RETURNING *`,
+    [project || "", keywordClean, keywordLc]
+  );
+  const group = groupRes.rows[0];
+
+  for (const domain of domains) {
+    await pool.query(
+      `INSERT INTO rank_keyword_domains (group_id, domain, target_url, is_whitelisted)
+       VALUES ($1,$2,$3,true)
+       ON CONFLICT (group_id, domain) DO UPDATE SET
+         target_url=COALESCE(NULLIF(EXCLUDED.target_url,''), rank_keyword_domains.target_url),
+         is_whitelisted=true`,
+      [group.id, domain, targetUrl || ""]
+    );
+
+    await pool.query(
+      `INSERT INTO rank_keywords (project_name, domain, keyword, target_url)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (domain, keyword) DO UPDATE SET project_name=EXCLUDED.project_name, target_url=EXCLUDED.target_url`,
+      [project || "", domain, keywordClean, targetUrl || ""]
+    ).catch(() => {});
   }
 
-  let found = { position: null, page: null, matched_url: "" };
-  const maxPages = Number(process.env.RANK_MAX_PAGES || 10);
+  return getKeywordGroup(group.id);
+}
 
+async function getKeywordGroup(id) {
+  const groupRes = await pool.query("SELECT * FROM rank_keyword_groups WHERE id=$1", [id]);
+  const group = groupRes.rows[0];
+  if (!group) return null;
+  const domains = (await pool.query("SELECT * FROM rank_keyword_domains WHERE group_id=$1 ORDER BY id ASC", [id])).rows;
+  const suspicious = (await pool.query("SELECT COUNT(*)::int AS count FROM rank_scan_results WHERE group_id=$1 AND classification='suspicious' AND checked_at > NOW() - INTERVAL '7 days'", [id])).rows[0]?.count || 0;
+  return { ...group, domains, suspicious_count: suspicious, domain_count: domains.length };
+}
+
+async function fetchGoogleResults(keyword) {
+  const key = process.env.GOOGLE_SEARCH_API_KEY;
+  const cx = process.env.GOOGLE_SEARCH_CX;
+  if (!key || !cx) throw new Error("Missing GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX");
+
+  const maxPages = Math.min(10, Math.max(1, Number(process.env.RANK_MAX_PAGES || 10)));
+  const all = [];
   for (let page = 0; page < maxPages; page += 1) {
     const start = page * 10 + 1;
     const { data } = await axios.get("https://www.googleapis.com/customsearch/v1", {
-      timeout: 20000,
-      params: { key, cx, q: row.keyword, start, num: 10 }
+      timeout: 25000,
+      params: { key, cx, q: keyword, start, num: 10 }
     });
-
     const items = Array.isArray(data.items) ? data.items : [];
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      if (domainMatches(item.link, row.domain)) {
-        const position = start + i;
-        found = { position, page: Math.ceil(position / 10), matched_url: item.link || "" };
-        page = maxPages;
-        break;
-      }
-    }
-
+    items.forEach((item, i) => all.push({ ...item, position: start + i, page: Math.ceil((start + i) / 10), keyword }));
     if (items.length < 10) break;
   }
+  return all.slice(0, 100);
+}
 
-  await pool.query(
-    `INSERT INTO rank_results (keyword_id, keyword, domain, position, page, matched_url)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
-    [row.id, row.keyword, row.domain, found.position, found.page, found.matched_url]
+async function lookupDomainIntel(domain) {
+  const clean = normalizeDomain(domain).replace(/^www\./, "");
+  if (!clean) return null;
+  const cached = await pool.query("SELECT * FROM domain_intel_cache WHERE domain=$1 AND checked_at > NOW() - INTERVAL '24 hours'", [clean]);
+  if (cached.rows[0]) return cached.rows[0];
+
+  let ip = "";
+  let nameservers = [];
+  let registrar = "";
+  let abuseEmail = "";
+  let networkName = "";
+  let asn = "";
+  let reportUrl = "";
+  const raw = {};
+
+  try { const records = await dns.resolve4(clean); ip = records[0] || ""; raw.a = records; } catch (err) { raw.a_error = err.code || err.message; }
+  try { nameservers = await dns.resolveNs(clean); raw.ns = nameservers; } catch (err) { raw.ns_error = err.code || err.message; }
+
+  try {
+    const { data } = await axios.get(`https://rdap.org/domain/${clean}`, { timeout: 12000 });
+    raw.domain_rdap = data;
+    registrar = data?.registrar?.name || data?.entities?.find((e) => Array.isArray(e.roles) && e.roles.includes("registrar"))?.vcardArray?.[1]?.find((v) => v[0] === "fn")?.[3] || "";
+    const emails = [];
+    const entities = Array.isArray(data.entities) ? data.entities : [];
+    for (const entity of entities) {
+      const cards = entity?.vcardArray?.[1] || [];
+      for (const c of cards) if (c[0] === "email" && c[3]) emails.push(c[3]);
+    }
+    abuseEmail = emails.find((e) => /abuse/i.test(e)) || emails[0] || "";
+  } catch (err) { raw.domain_rdap_error = err.code || err.message; }
+
+  if (ip) {
+    try {
+      const { data } = await axios.get(`https://rdap.org/ip/${ip}`, { timeout: 12000 });
+      raw.ip_rdap = data;
+      networkName = data?.name || data?.handle || "";
+      asn = data?.arin_originas0_originautnums?.[0]?.toString() || data?.handle || "";
+      const emails = [];
+      const entities = Array.isArray(data.entities) ? data.entities : [];
+      for (const entity of entities) {
+        const cards = entity?.vcardArray?.[1] || [];
+        for (const c of cards) if (c[0] === "email" && c[3]) emails.push(c[3]);
+      }
+      if (!abuseEmail) abuseEmail = emails.find((e) => /abuse/i.test(e)) || emails[0] || "";
+    } catch (err) { raw.ip_rdap_error = err.code || err.message; }
+  }
+
+  const nsJoined = nameservers.join(" ").toLowerCase();
+  if (nsJoined.includes("cloudflare")) reportUrl = "https://abuse.cloudflare.com/";
+  else if (abuseEmail) reportUrl = `mailto:${abuseEmail}`;
+  else reportUrl = `https://www.google.com/search?q=${encodeURIComponent(`${clean} abuse report hosting registrar`)}`;
+
+  const res = await pool.query(
+    `INSERT INTO domain_intel_cache (domain, ip, nameservers, registrar, abuse_email, network_name, asn, report_url, raw, checked_at)
+     VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9::jsonb,NOW())
+     ON CONFLICT (domain) DO UPDATE SET
+       ip=EXCLUDED.ip,
+       nameservers=EXCLUDED.nameservers,
+       registrar=EXCLUDED.registrar,
+       abuse_email=EXCLUDED.abuse_email,
+       network_name=EXCLUDED.network_name,
+       asn=EXCLUDED.asn,
+       report_url=EXCLUDED.report_url,
+       raw=EXCLUDED.raw,
+       checked_at=NOW()
+     RETURNING *`,
+    [clean, ip, JSON.stringify(nameservers), registrar, abuseEmail, networkName, asn, reportUrl, JSON.stringify(raw)]
   );
+  return res.rows[0];
+}
 
-  await pool.query(
-    "UPDATE rank_keywords SET last_position=$1, last_page=$2, last_checked_at=NOW() WHERE id=$3",
-    [found.position, found.page, row.id]
-  );
+async function checkGroup(group) {
+  const domains = (await pool.query("SELECT * FROM rank_keyword_domains WHERE group_id=$1 AND is_whitelisted=true ORDER BY id ASC", [group.id])).rows;
+  const whitelistDomains = domains.map((d) => d.domain);
+  const allowed = allowedExternalDomains();
+  const items = await fetchGoogleResults(group.keyword);
+  const now = new Date();
+  const suspicious = [];
 
-  return found;
+  await pool.query("DELETE FROM rank_scan_results WHERE group_id=$1 AND checked_at < NOW() - INTERVAL '30 days'", [group.id]);
+
+  for (const item of items) {
+    const host = hostFromUrl(item.link || "");
+    const classified = classifyResult(item, whitelistDomains, allowed);
+    await pool.query(
+      `INSERT INTO rank_scan_results (group_id, keyword, position, page, title, link, snippet, host, classification, reason, checked_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [group.id, group.keyword, item.position, item.page, item.title || "", item.link || "", item.snippet || "", host, classified.classification, classified.reason, now]
+    );
+    if (classified.classification === "suspicious") suspicious.push({ ...item, host, ...classified });
+  }
+
+  for (const d of domains) {
+    const match = items.find((item) => domainMatches(item.link || "", d.domain));
+    await pool.query(
+      `UPDATE rank_keyword_domains SET last_position=$1, last_page=$2, last_matched_url=$3, last_status=$4, last_checked_at=NOW() WHERE id=$5`,
+      [match?.position || null, match?.page || null, match?.link || "", match ? "found" : "not_found", d.id]
+    );
+
+    await pool.query(
+      `INSERT INTO rank_results (keyword_id, keyword, domain, position, page, matched_url)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [d.id, group.keyword, d.domain, match?.position || null, match?.page || null, match?.link || ""]
+    ).catch(() => {});
+  }
+
+  for (const s of suspicious.slice(0, 25)) {
+    const seen = await pool.query(
+      `INSERT INTO rank_suspicious_seen (group_id, host, last_position, last_page)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (group_id, host) DO UPDATE SET last_seen_at=NOW(), last_position=EXCLUDED.last_position, last_page=EXCLUDED.last_page
+       RETURNING (xmax = 0) AS is_new`,
+      [group.id, s.host, s.position, s.page]
+    );
+    s.intel = await lookupDomainIntel(s.host).catch((err) => ({ domain: s.host, error: err.message }));
+
+    if (seen.rows[0]?.is_new && s.position <= Number(process.env.RANK_SUSPICIOUS_ALERT_MAX_POSITION || 30)) {
+      const message = `SUSPICIOUS GOOGLE RESULT\n\nKeyword: ${group.keyword}\nHost: ${s.host}\nRank: ${s.position}\nPage: ${s.page}\nURL: ${s.link}\nReason: ${s.reason}\nReport: ${s.intel?.report_url || "n/a"}`;
+      await sendTelegram(message).catch(() => false);
+    }
+  }
+
+  await pool.query("UPDATE rank_keyword_groups SET last_checked_at=NOW() WHERE id=$1", [group.id]);
+  return { total_results: items.length, suspicious_count: suspicious.length, suspicious };
 }
 
 router.get("/keywords", async (req, res, next) => {
   try {
     await ensureRankTables();
-    const { rows } = await pool.query("SELECT * FROM rank_keywords ORDER BY id DESC");
-    res.json(rows);
-  } catch (err) {
-    next(err);
-  }
+    const groups = (await pool.query("SELECT * FROM rank_keyword_groups ORDER BY id DESC")).rows;
+    const out = [];
+    for (const g of groups) out.push(await getKeywordGroup(g.id));
+    res.json(out.filter(Boolean));
+  } catch (err) { next(err); }
 });
 
 router.post("/keywords", async (req, res, next) => {
   try {
     await ensureRankTables();
-    const domain = normalizeDomain(req.body.domain || "");
+    const domains = parseDomainList(req.body.domain || req.body.domains || "");
     const keyword = String(req.body.keyword || "").trim();
     const project = String(req.body.project_name || "").trim();
     const targetUrl = String(req.body.target_url || "").trim();
-    if (!domain || !keyword) return res.status(400).json({ error: "Domain and keyword required" });
-    const { rows } = await pool.query(
-      `INSERT INTO rank_keywords (project_name, domain, keyword, target_url)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (domain, keyword) DO UPDATE SET project_name=EXCLUDED.project_name, target_url=EXCLUDED.target_url
-       RETURNING *`,
-      [project, domain, keyword, targetUrl]
-    );
-    res.json(rows[0]);
-  } catch (err) {
-    next(err);
-  }
+    if (!domains.length || !keyword) return res.status(400).json({ error: "Domain and keyword required" });
+    const group = await upsertKeywordGroup({ project, keyword, domains, targetUrl });
+    res.json(group);
+  } catch (err) { next(err); }
 });
 
 router.delete("/keywords/:id", async (req, res, next) => {
   try {
     await ensureRankTables();
-    await pool.query("DELETE FROM rank_keywords WHERE id=$1", [req.params.id]);
+    await pool.query("DELETE FROM rank_keyword_groups WHERE id=$1", [req.params.id]);
+    await pool.query("DELETE FROM rank_keywords WHERE id=$1", [req.params.id]).catch(() => {});
     res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 router.get("/results", async (req, res, next) => {
   try {
     await ensureRankTables();
-    const { rows } = await pool.query("SELECT * FROM rank_results ORDER BY checked_at DESC LIMIT 300");
+    const { rows } = await pool.query("SELECT * FROM rank_scan_results ORDER BY checked_at DESC, position ASC LIMIT 1000");
     res.json(rows);
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
+});
+
+router.get("/intel/:domain", async (req, res, next) => {
+  try {
+    await ensureRankTables();
+    const intel = await lookupDomainIntel(req.params.domain);
+    res.json(intel);
+  } catch (err) { next(err); }
 });
 
 router.post("/check/:id", async (req, res, next) => {
   try {
     await ensureRankTables();
-    const { rows } = await pool.query("SELECT * FROM rank_keywords WHERE id=$1", [req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: "Keyword not found" });
-    const result = await checkKeyword(rows[0]);
-    res.json({ ok: true, ...result });
-  } catch (err) {
-    next(err);
-  }
+    const group = await getKeywordGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Keyword group not found" });
+    const result = await checkGroup(group);
+    res.json({ ok: true, ...result, group: await getKeywordGroup(req.params.id) });
+  } catch (err) { next(err); }
 });
 
 router.post("/check-all", async (req, res, next) => {
   try {
     await ensureRankTables();
-    const { rows } = await pool.query("SELECT * FROM rank_keywords WHERE is_active=true ORDER BY id DESC LIMIT 50");
+    const { rows } = await pool.query("SELECT * FROM rank_keyword_groups WHERE is_active=true ORDER BY id DESC LIMIT 50");
     const checked = [];
-    for (const row of rows) {
-      try {
-        checked.push({ id: row.id, keyword: row.keyword, domain: row.domain, ...(await checkKeyword(row)) });
-      } catch (err) {
-        checked.push({ id: row.id, keyword: row.keyword, domain: row.domain, error: err.message });
-      }
+    for (const group of rows) {
+      try { checked.push({ id: group.id, keyword: group.keyword, ...(await checkGroup(group)) }); }
+      catch (err) { checked.push({ id: group.id, keyword: group.keyword, error: err.message }); }
     }
     res.json({ ok: true, checked });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
