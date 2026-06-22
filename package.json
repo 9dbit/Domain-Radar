@@ -1,6 +1,6 @@
 {
   "name": "domain-radar",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Domain monitor with DNS, HTTP, proxy, provider-node checks, rank checker, history, and Telegram alerts.",
   "main": "server/index.js",
   "scripts": {
@@ -10,6 +10,7 @@
     "build": "vite build",
     "start": "node server/index.js",
     "agent": "node agent/provider-agent.js",
+    "agent:poll": "node agent/provider-poll-agent.js",
     "db:init": "node server/db/init.js"
   },
   "dependencies": {
