@@ -1,6 +1,7 @@
 const axios = require("axios");
 const { pool } = require("./db");
 const { cleanBase } = require("./nodeRoutes");
+const { enqueueNodeTask, waitForNodeTask } = require("./agentPollRoutes");
 
 async function getActiveNodes() {
   try {
@@ -26,6 +27,10 @@ async function getActiveNodes() {
   }
 }
 
+function isPollingNode(node) {
+  return String(node.endpoint_url || "").trim().toLowerCase().startsWith("poll://");
+}
+
 function normalizeNodeResult(node, data, latencyMs) {
   return {
     checker_type: `node:${node.network_type || "provider"}`,
@@ -39,7 +44,31 @@ function normalizeNodeResult(node, data, latencyMs) {
   };
 }
 
+async function checkViaPollingNode(domain, node) {
+  const started = Date.now();
+  try {
+    const taskId = await enqueueNodeTask(node, domain);
+    const data = await waitForNodeTask(taskId, 45000);
+    await pool.query("UPDATE provider_nodes SET last_health_status='online', last_ping_at=NOW() WHERE id=$1", [node.id]);
+    return normalizeNodeResult(node, data, Date.now() - started);
+  } catch (err) {
+    await pool.query("UPDATE provider_nodes SET last_health_status='offline', last_ping_at=NOW() WHERE id=$1", [node.id]).catch(() => {});
+    return {
+      checker_type: `node:${node.network_type || "provider"}`,
+      provider_name: node.provider_name || node.name,
+      status: "warning",
+      http_status: null,
+      final_url: "",
+      dns_result: "",
+      latency_ms: Date.now() - started,
+      reason: `Polling node error: ${err.code || err.message}`
+    };
+  }
+}
+
 async function checkViaNode(domain, node) {
+  if (isPollingNode(node)) return checkViaPollingNode(domain, node);
+
   const started = Date.now();
   try {
     const { data } = await axios.post(
@@ -67,4 +96,4 @@ async function checkViaNode(domain, node) {
   }
 }
 
-module.exports = { getActiveNodes, checkViaNode };
+module.exports = { getActiveNodes, checkViaNode, isPollingNode };
