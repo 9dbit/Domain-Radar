@@ -58,6 +58,25 @@ function pollingPresets() {
   ].map((n) => ({ ...n, endpoint_url: `poll://${n.name}`, secret_key: defaultSecret(n.name) }));
 }
 
+function enrichNodeForUi(node) {
+  const originalProviderName = node.provider_name;
+  const originalNetworkType = node.network_type;
+  const hasBattery = node.battery_percent !== null && node.battery_percent !== undefined;
+  const batteryLabel = hasBattery ? `${node.battery_percent}%` : "n/a";
+  const chargingLabel = node.is_charging === null || node.is_charging === undefined ? "n/a" : node.is_charging ? "Yes" : "No";
+  const lastSeenLabel = node.telemetry_last_seen_at ? new Date(node.telemetry_last_seen_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "never";
+  return {
+    ...node,
+    raw_provider_name: originalProviderName,
+    raw_network_type: originalNetworkType,
+    provider_name: originalProviderName,
+    network_type: `${originalNetworkType} · Battery ${batteryLabel} · Charging ${chargingLabel}`,
+    battery_label: batteryLabel,
+    charging_label: chargingLabel,
+    last_seen_label: lastSeenLabel
+  };
+}
+
 async function pingNode(node) {
   if (String(node.endpoint_url || "").toLowerCase().startsWith("poll://")) {
     return { ok: true, mode: "polling", data: { ok: true, message: "Polling node waits for device agent heartbeat", node_name: node.name } };
@@ -88,7 +107,7 @@ router.get("/", async (req, res, next) => {
       LEFT JOIN node_telemetry t ON t.node_id = n.id
       ORDER BY n.id DESC
     `);
-    res.json(rows);
+    res.json(rows.map(enrichNodeForUi));
   } catch (err) {
     next(err);
   }
