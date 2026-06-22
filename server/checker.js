@@ -10,7 +10,7 @@ function getKeywords() {
 }
 
 function normalizeDomain(domain) {
-  return domain
+  return String(domain || "")
     .replace(/^https?:\/\//i, "")
     .replace(/\/.*$/, "")
     .trim()
@@ -19,25 +19,45 @@ function normalizeDomain(domain) {
 
 function createProxyAgent(proxy) {
   if (!proxy?.proxy_url) return undefined;
-  if (proxy.proxy_type === "socks" || proxy.proxy_url.startsWith("socks")) {
-    return new SocksProxyAgent(proxy.proxy_url);
-  }
+  if (proxy.proxy_type === "socks" || proxy.proxy_url.startsWith("socks")) return new SocksProxyAgent(proxy.proxy_url);
   return new HttpsProxyAgent(proxy.proxy_url);
+}
+
+function classifyNetworkError(err, stage = "HTTP") {
+  const code = err?.code || "";
+  const msg = err?.message || "Unknown error";
+  if (code === "ENOTFOUND") return "DNS not found / domain tidak resolve";
+  if (code === "ENODATA") return "DNS has no usable record";
+  if (code === "EAI_AGAIN") return "DNS temporary failure / retry later";
+  if (code === "ETIMEDOUT" || code === "ECONNABORTED") return `${stage} timeout / koneksi terlalu lama`;
+  if (code === "ECONNREFUSED") return `${stage} connection refused / koneksi ditolak`;
+  if (code === "ECONNRESET") return `${stage} connection reset / koneksi diputus`;
+  if (code === "EHOSTUNREACH" || code === "ENETUNREACH") return `${stage} network unreachable`;
+  if (code === "CERT_HAS_EXPIRED" || code === "DEPTH_ZERO_SELF_SIGNED_CERT" || code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") return `SSL certificate issue: ${code}`;
+  if (/proxy authentication/i.test(msg)) return "Proxy authentication failed / username password proxy salah";
+  if (/socket hang up/i.test(msg)) return `${stage} socket hang up / koneksi diputus server`;
+  return `${stage} error: ${code || msg}`;
+}
+
+function classifyHttpStatus(statusCode) {
+  if (statusCode === 403) return "HTTP 403 forbidden / akses ditolak";
+  if (statusCode === 451) return "HTTP 451 unavailable for legal reasons / kemungkinan diblokir";
+  if (statusCode === 429) return "HTTP 429 rate limited / terlalu banyak request";
+  if (statusCode >= 500) return `HTTP ${statusCode} server error`;
+  if (statusCode >= 400) return `HTTP ${statusCode} client error`;
+  return `HTTP ${statusCode}`;
 }
 
 function detectPageSignal(text, finalUrl) {
   const haystack = `${finalUrl || ""}\n${text || ""}`.toLowerCase();
   const keyword = getKeywords().find(k => haystack.includes(k));
-  if (keyword) {
-    return { matched: true, reason: `Detected keyword: ${keyword}` };
-  }
+  if (keyword) return { matched: true, reason: `Block keyword detected: ${keyword}` };
   return { matched: false, reason: "" };
 }
 
 async function checkDomain(domain, checker = { type: "direct", provider_name: "Direct" }) {
   const cleanDomain = normalizeDomain(domain);
   const started = Date.now();
-
   let dnsResult = "";
   let httpStatus = null;
   let finalUrl = "";
@@ -49,7 +69,7 @@ async function checkDomain(domain, checker = { type: "direct", provider_name: "D
     dnsResult = records.join(", ");
   } catch (err) {
     status = "warning";
-    reason = `DNS error: ${err.code || err.message}`;
+    reason = classifyNetworkError(err, "DNS");
   }
 
   try {
@@ -60,32 +80,26 @@ async function checkDomain(domain, checker = { type: "direct", provider_name: "D
       validateStatus: () => true,
       httpsAgent: proxyAgent,
       httpAgent: proxyAgent,
-      headers: {
-        "User-Agent": "Mozilla/5.0 DomainRadar/1.0"
-      }
+      headers: { "User-Agent": "Mozilla/5.0 DomainRadar/1.0" }
     });
 
     httpStatus = response.status;
     finalUrl = response.request?.res?.responseUrl || `https://${cleanDomain}`;
-
-    const signal = detectPageSignal(
-      typeof response.data === "string" ? response.data.slice(0, 20000) : "",
-      finalUrl
-    );
+    const signal = detectPageSignal(typeof response.data === "string" ? response.data.slice(0, 20000) : "", finalUrl);
 
     if (signal.matched) {
       status = "blocked";
       reason = signal.reason;
-    } else if (httpStatus >= 500 || httpStatus === 403 || httpStatus === 451) {
+    } else if (httpStatus >= 500 || httpStatus === 403 || httpStatus === 451 || httpStatus === 429) {
       status = "warning";
-      reason = `Suspicious HTTP status: ${httpStatus}`;
+      reason = classifyHttpStatus(httpStatus);
     } else if (!reason) {
       status = "working";
       reason = "OK";
     }
   } catch (err) {
     if (status !== "warning") status = "warning";
-    reason = `HTTP error: ${err.code || err.message}`;
+    reason = classifyNetworkError(err, "HTTP");
   }
 
   return {
@@ -108,4 +122,4 @@ function calculateGlobalStatus(results) {
   return "unknown";
 }
 
-module.exports = { checkDomain, calculateGlobalStatus, normalizeDomain };
+module.exports = { checkDomain, calculateGlobalStatus, normalizeDomain, classifyNetworkError, classifyHttpStatus };
