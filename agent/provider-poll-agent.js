@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const axios = require("axios");
 const dns = require("dns").promises;
+const fs = require("fs");
 const { spawnSync } = require("child_process");
 
 const CENTRAL_URL = String(process.env.CENTRAL_URL || "").replace(/\/+$/, "");
@@ -21,22 +22,56 @@ function normalizeDomain(domain) {
   return String(domain || "").replace(/^https?:\/\//i, "").replace(/\/.*$/, "").trim().toLowerCase();
 }
 
+function readFileTrim(path) {
+  try { return fs.readFileSync(path, "utf8").trim(); } catch (_) { return ""; }
+}
+
+function readSysfsBattery() {
+  const basePaths = [
+    "/sys/class/power_supply/battery",
+    "/sys/class/power_supply/BAT0",
+    "/sys/class/power_supply/maxfg"
+  ];
+  for (const base of basePaths) {
+    const capacity = readFileTrim(`${base}/capacity`);
+    if (!capacity) continue;
+    const status = readFileTrim(`${base}/status`);
+    const health = readFileTrim(`${base}/health`);
+    const tempRaw = readFileTrim(`${base}/temp`) || readFileTrim(`${base}/temperature`);
+    const pct = Number(capacity);
+    const tempNumber = Number(tempRaw);
+    let tempC = null;
+    if (Number.isFinite(tempNumber)) tempC = tempNumber > 100 ? tempNumber / 10 : tempNumber;
+    return {
+      battery_percent: Number.isFinite(pct) ? pct : null,
+      is_charging: ["charging", "full"].includes(String(status).toLowerCase()),
+      battery_status: status || "sysfs",
+      battery_health: health || "unknown",
+      battery_temperature_c: tempC
+    };
+  }
+  return null;
+}
+
 function getBatteryTelemetry() {
   try {
     const run = spawnSync("termux-battery-status", [], { encoding: "utf8", timeout: 3000 });
-    if (run.error || !run.stdout) throw run.error || new Error("battery unavailable");
-    const data = JSON.parse(run.stdout);
-    const status = String(data.status || "");
-    return {
-      battery_percent: typeof data.percentage === "number" ? data.percentage : null,
-      is_charging: status.toUpperCase() === "CHARGING" || status.toUpperCase() === "FULL",
-      battery_status: status,
-      battery_health: data.health || "",
-      battery_temperature_c: typeof data.temperature === "number" ? data.temperature : null
-    };
-  } catch (_) {
-    return { battery_percent: null, is_charging: null, battery_status: "unavailable", battery_health: "unknown", battery_temperature_c: null };
-  }
+    if (!run.error && run.stdout) {
+      const data = JSON.parse(run.stdout);
+      const status = String(data.status || "");
+      return {
+        battery_percent: typeof data.percentage === "number" ? data.percentage : null,
+        is_charging: status.toUpperCase() === "CHARGING" || status.toUpperCase() === "FULL",
+        battery_status: status,
+        battery_health: data.health || "",
+        battery_temperature_c: typeof data.temperature === "number" ? data.temperature : null
+      };
+    }
+  } catch (_) {}
+
+  const sysfs = readSysfsBattery();
+  if (sysfs) return sysfs;
+  return { battery_percent: null, is_charging: null, battery_status: "unavailable", battery_health: "unknown", battery_temperature_c: null };
 }
 
 function classifyNetworkError(err, stage = "HTTP") {
@@ -127,6 +162,7 @@ async function loop() {
   console.log(`Node: ${NODE_NAME}`);
   console.log(`Provider: ${PROVIDER_NAME}`);
   console.log(`Network: ${NETWORK_TYPE}`);
+  console.log(`Battery telemetry: ${JSON.stringify(getBatteryTelemetry())}`);
   while (true) {
     try { await pollOnce(); } catch (err) { console.error(`[${new Date().toISOString()}] Poll error: ${err.response?.data?.error || err.code || err.message}`); }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
