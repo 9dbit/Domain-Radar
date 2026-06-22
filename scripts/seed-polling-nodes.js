@@ -40,21 +40,23 @@ async function main() {
 
   for (const node of nodes) {
     await pool.query(
-      `INSERT INTO provider_nodes (name, provider_name, network_type, endpoint_url, secret_key, is_active)
-       VALUES ($1,$2,$3,$4,$5,true)
+      `INSERT INTO provider_nodes (name, provider_name, network_type, endpoint_url, secret_key, is_active, last_health_status, last_ping_at)
+       VALUES ($1,$2,$3,$4,$5,true,'waiting',NULL)
        ON CONFLICT (name) DO UPDATE SET
          provider_name=EXCLUDED.provider_name,
          network_type=EXCLUDED.network_type,
          endpoint_url=EXCLUDED.endpoint_url,
          secret_key=EXCLUDED.secret_key,
-         is_active=true
+         is_active=true,
+         last_health_status='waiting',
+         last_ping_at=NULL
        RETURNING *`,
       [node.name, node.provider_name, node.network_type, node.endpoint_url, node.secret_key]
     );
     console.log(`${node.name} | ${node.endpoint_url} | ${node.secret_key}`);
   }
 
-  console.log(`Seeded ${nodes.length} polling provider nodes.`);
+  console.log(`Seeded ${nodes.length} polling provider nodes as waiting.`);
 }
 
 main()
