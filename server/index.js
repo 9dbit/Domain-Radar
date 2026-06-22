@@ -12,6 +12,7 @@ const settingsRoutes = require("./settingsRoutes");
 const projectRoutes = require("./projectRoutes");
 const rankRoutes = require("./rankRoutes");
 const { router: nodeRoutes } = require("./nodeRoutes");
+const { router: agentPollRoutes } = require("./agentPollRoutes");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { loadSettings } = require("./settingsStore");
 const { sendTelegram } = require("./telegram");
@@ -56,6 +57,7 @@ app.get("/api/auth/me", (req, res) => res.json({ authenticated: !adminPassword |
 app.post("/api/auth/login", (req, res) => { if (!adminPassword) { req.session.isAdmin = true; return res.json({ ok: true }); } if (String(req.body.password || "") !== adminPassword) return res.status(401).json({ error: "Invalid password" }); req.session.isAdmin = true; res.json({ ok: true }); });
 app.post("/api/auth/logout", (req, res) => { req.session.destroy(() => { res.clearCookie("domain_radar_sid"); res.json({ ok: true }); }); });
 
+app.use("/api/agent", agentPollRoutes);
 app.use("/api/settings", requireAdmin, settingsRoutes);
 app.use("/api/projects", requireAdmin, projectRoutes);
 app.use("/api/rank", requireAdmin, rankRoutes);
