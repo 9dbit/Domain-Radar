@@ -1,20 +1,10 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
 :root {
-  --bg: #070b10;
-  --side: #05070b;
-  --panel: #101720;
-  --panel2: #0d131b;
-  --line: #202a35;
-  --line2: #263342;
-  --text: #edf6ff;
-  --muted: #8b98a8;
-  --green: #00d45a;
-  --green2: #00f06a;
-  --greenBg: #053d20;
-  --greenSoft: rgba(0, 212, 90, .16);
-  --red: #ff4d4f;
-  --yellow: #ffb020;
+  --bg: #070b10; --side: #05070b; --panel: #101720; --panel2: #0d131b;
+  --line: #202a35; --line2: #263342; --text: #edf6ff; --muted: #8b98a8;
+  --green: #00d45a; --green2: #00f06a; --greenBg: #053d20; --greenSoft: rgba(0, 212, 90, .16);
+  --red: #ff4d4f; --yellow: #ffb020;
 }
 body { margin: 0; font-family: Inter, Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
 .app { display: grid; grid-template-columns: 188px 1fr; min-height: 100vh; }
@@ -44,12 +34,9 @@ textarea { margin: 0; min-height: 64px; resize: vertical; }
 .panel h2 svg { width: 17px; height: 17px; color: var(--green); }
 .panelHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
 .panelHead h2 { margin: 0; }
-.row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
-.domainForm { display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 8px; align-items: center; }
 .createProjectPanel { border-color: #1f5737; }
 .createProjectForm { display: grid; grid-template-columns: 1fr 1.2fr 1fr auto; gap: 8px; align-items: center; }
 .createProjectForm .wide { grid-column: 1 / -1; }
-.projectForm { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; align-items: center; margin-bottom: 10px; }
 .projectAddBox { background:#0a1018; border:1px solid var(--line); border-radius:11px; padding:10px; display:grid; gap:8px; margin: 10px 0 12px; }
 .projectAddRow { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; }
 .projectHeaderGrid { display:grid; grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(84px, .55fr)) auto; gap:8px; align-items:center; margin-bottom:10px; }
@@ -60,13 +47,13 @@ textarea { margin: 0; min-height: 64px; resize: vertical; }
 .rankForm { display: grid; grid-template-columns: .9fr 1fr 1.4fr 1.4fr auto; gap: 8px; align-items: center; margin-bottom: 10px; }
 .nodeForm { display:grid; grid-template-columns: 1fr 1fr .75fr 1.4fr 1fr auto; gap:8px; align-items:center; margin-bottom:10px; }
 .nodeStatusGrid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:8px; }
-.nodeStatusCard { position:relative; overflow:hidden; background:#151a21; border:1px solid #303a46; border-radius:12px; padding:12px; display:grid; grid-template-columns: 1fr auto; gap:8px 10px; align-items:center; align-content:center; min-height: 116px; }
+.nodeStatusCard { position:relative; overflow:hidden; background:#151a21; border:1px solid #303a46; border-radius:13px; padding:12px; display:grid; grid-template-columns: 1fr auto; gap:9px 10px; align-items:center; align-content:center; min-height: 158px; }
 .nodeStatusCard::after { content:""; position:absolute; left:0; bottom:0; height:2px; width:100%; background:rgba(255,255,255,.08); transform-origin:left; animation: nodeCountdown 15s linear infinite; }
-.nodeStatusCard b { display:block; margin-bottom:3px; color:#f7fbff; font-size: 13.5px; line-height: 1.2; letter-spacing:.01em; }
-.nodeStatusCard small { color:#aeb9c7; font-size: 11.5px; line-height: 1.35; }
-.nodeStatusCard small:nth-of-type(1) { grid-column: 1 / -1; color:#c1cad6; white-space: normal; }
-.nodeStatusCard small:nth-of-type(2) { grid-column: 1 / -1; color:#aeb9c7; }
-.nodeStatusCard .smallBtn { grid-column: 1 / -1; width: fit-content; margin-top: 1px; }
+.nodeTitleBlock b, .nodeStatusCard b { display:block; margin-bottom:3px; color:#f7fbff; font-size: 15px; line-height: 1.2; letter-spacing:.01em; }
+.nodeTitleBlock small { color:#c1cad6; font-size:12px; }
+.nodeTelemetryRow { grid-column: 1 / -1; display:grid; grid-template-columns: 1fr 1fr; gap:10px; align-items:center; }
+.nodeMetaLine { grid-column: 1 / -1; display:flex; flex-wrap:wrap; gap:6px 10px; color:#aeb9c7; font-size:10.5px; line-height:1.25; }
+.nodeStatusCard .smallBtn { grid-column: 1 / -1; width: fit-content; margin-top: 0; }
 .nodeStatusCard:has(.healthBadge.online) { border-color: rgba(0,212,90,.55); box-shadow: 0 0 0 1px rgba(0,212,90,.12), 0 0 18px rgba(0,212,90,.08); }
 .nodeStatusCard:has(.healthBadge.online)::before { content:""; position:absolute; top:13px; right:86px; width:8px; height:8px; border-radius:999px; background:var(--green); box-shadow:0 0 0 0 rgba(0,212,90,.65); animation: onlinePulse 1.6s ease-out infinite; }
 .nodeStatusCard:has(.healthBadge.online)::after { background:linear-gradient(90deg, var(--green), rgba(0,212,90,.15)); }
@@ -78,6 +65,22 @@ textarea { margin: 0; min-height: 64px; resize: vertical; }
 .healthBadge.waiting { background:#5f4308; color:#ffe2a0; }
 .healthBadge.warning { background:#7a4f00; color:#ffdf8b; }
 .healthBadge.unknown { background:#2d3641; color:#c9d1d9; }
+.batteryGauge, .signalGauge { background:#0b1118; border:1px solid #2a3542; border-radius:12px; padding:9px; min-height:64px; display:grid; align-content:center; justify-items:center; gap:5px; }
+.batteryGauge b, .signalGauge b { margin:0; font-size:13px; line-height:1; color:#f3fbff; }
+.batteryShell { position:relative; width:54px; height:26px; border:3px solid #d7e1ea; border-radius:7px; padding:3px; background:#111820; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.batteryShell::after { content:""; position:absolute; right:-8px; top:7px; width:5px; height:10px; background:#d7e1ea; border-radius:0 3px 3px 0; }
+.batteryShell span { display:block; width:var(--battery-fill); height:100%; border-radius:3px; background:var(--green); box-shadow:0 0 10px rgba(0,212,90,.35); transition:width .25s ease; }
+.batteryGauge.low .batteryShell span { background:#ff4d4f; box-shadow:0 0 10px rgba(255,77,79,.35); }
+.batteryGauge.mid .batteryShell span { background:#ffb020; box-shadow:0 0 10px rgba(255,176,32,.35); }
+.batteryGauge.unknown .batteryShell { opacity:.45; }
+.signalBars { height:36px; display:flex; align-items:flex-end; gap:4px; }
+.signalBars span { width:8px; border-radius:4px 4px 2px 2px; background:#303a46; border:1px solid rgba(255,255,255,.08); }
+.signalBars span:nth-child(1) { height:10px; }
+.signalBars span:nth-child(2) { height:16px; }
+.signalBars span:nth-child(3) { height:22px; }
+.signalBars span:nth-child(4) { height:29px; }
+.signalBars span:nth-child(5) { height:36px; }
+.signalBars span.filled { background:var(--green); box-shadow:0 0 10px rgba(0,212,90,.28); }
 .grid { display: grid; grid-template-columns: 1fr 1fr 2fr 1fr auto; gap: 8px; align-items: center; }
 .settingsGrid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
 .settingsGrid .wide { grid-column: 1 / 3; }
@@ -86,11 +89,6 @@ textarea { margin: 0; min-height: 64px; resize: vertical; }
 .muted { color: var(--muted); font-size: 12px; }
 .projectStack { display:grid; gap:11px; }
 .projectDetail { padding:13px; overflow:auto; }
-.projectGrid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 9px; }
-.projectCard { background: #0a1018; border: 1px solid var(--line); border-radius: 11px; padding: 10px; display: grid; gap: 5px; }
-.projectCard b { color: #f3fbff; }
-.projectCard span { color: #c9d1d9; font-weight: 700; }
-.projectCard small { color: var(--muted); }
 .alertPanel { border-color: #4b3716; }
 .alertList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .alertItem { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; background: #10161e; border: 1px solid #263342; border-radius: 10px; padding: 7px 9px; min-height: 38px; }
@@ -132,6 +130,6 @@ th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spa
 @keyframes searchingSpin { to { transform: rotate(360deg); } }
 @keyframes nodeCountdown { from { transform:scaleX(1); } to { transform:scaleX(0); } }
 @media (min-width: 1500px) { .nodeStatusGrid { grid-template-columns: repeat(5, minmax(0,1fr)); } }
-@media (max-width: 1250px) { .projectHeaderGrid { grid-template-columns: 1fr repeat(2, minmax(100px, .4fr)); } .projectHeaderGrid > div:last-child { grid-column:auto; } .nodeStatusGrid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-@media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, 1fr); } .settingsGrid { grid-template-columns: 1fr; } .settingsGrid .wide { grid-column: auto; } .grid { grid-template-columns: 1fr 1fr; } .domainForm, .projectForm, .rankForm, .nodeForm, .createProjectForm { grid-template-columns: 1fr; } .createProjectForm .wide { grid-column:auto; } .projectGrid { grid-template-columns: repeat(2, 1fr); } .filters { grid-template-columns: 1fr; } .projectAddRow { grid-template-columns:1fr; } .nodeStatusGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } .alertList { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { html, body { width: 100%; overflow-x: hidden; } body { font-size: 13px; } .app { display: block; width: 100%; overflow-x: hidden; } aside { width: 100%; height: auto; position: relative; padding: 14px; border-right: 0; border-bottom: 1px solid var(--line); } aside h1 { font-size: 24px; margin-bottom: 5px; } aside p { font-size: 12px; margin-bottom: 12px; } aside button { width: auto; margin: 0 7px 7px 0; display: inline-flex; } main { padding: 12px; width: 100%; max-width: 100%; overflow-x: hidden; } .panel, .projectDetail { padding: 11px; border-radius: 12px; overflow-x: auto; } .panelHead { align-items: flex-start; flex-direction: column; } .cards { grid-template-columns: 1fr; gap: 8px; } .card { min-height: 70px; } .nodeStatusGrid, .projectGrid { grid-template-columns: 1fr; } table { min-width: 780px; font-size: 11.5px; } th, td { padding: 7px 6px; } .actions { flex-wrap: wrap; } }
+@media (max-width: 1250px) { .projectHeaderGrid { grid-template-columns: 1fr repeat(2, minmax(100px, .4fr)); } .nodeStatusGrid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, 1fr); } .settingsGrid { grid-template-columns: 1fr; } .settingsGrid .wide { grid-column: auto; } .grid { grid-template-columns: 1fr 1fr; } .rankForm, .nodeForm, .createProjectForm { grid-template-columns: 1fr; } .createProjectForm .wide { grid-column:auto; } .filters { grid-template-columns: 1fr; } .projectAddRow { grid-template-columns:1fr; } .nodeStatusGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } .alertList { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { html, body { width: 100%; overflow-x: hidden; } body { font-size: 13px; } .app { display: block; width: 100%; overflow-x: hidden; } aside { width: 100%; height: auto; position: relative; padding: 14px; border-right: 0; border-bottom: 1px solid var(--line); } aside h1 { font-size: 24px; margin-bottom: 5px; } aside p { font-size: 12px; margin-bottom: 12px; } aside button { width: auto; margin: 0 7px 7px 0; display: inline-flex; } main { padding: 12px; width: 100%; max-width: 100%; overflow-x: hidden; } .panel, .projectDetail { padding: 11px; border-radius: 12px; overflow-x: auto; } .panelHead { align-items: flex-start; flex-direction: column; } .cards { grid-template-columns: 1fr; gap: 8px; } .card { min-height: 70px; } .nodeStatusGrid { grid-template-columns: 1fr; } table { min-width: 780px; font-size: 11.5px; } th, td { padding: 7px 6px; } .actions { flex-wrap: wrap; } }
