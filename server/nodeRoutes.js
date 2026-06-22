@@ -19,6 +19,21 @@ async function ensureNodeTable() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS node_telemetry (
+      node_id INT PRIMARY KEY REFERENCES provider_nodes(id) ON DELETE CASCADE,
+      battery_percent INT,
+      is_charging BOOLEAN,
+      battery_status TEXT,
+      battery_health TEXT,
+      battery_temperature_c NUMERIC,
+      ip TEXT,
+      user_agent TEXT,
+      last_seen_at TIMESTAMP DEFAULT NOW(),
+      last_low_battery_alert_at TIMESTAMP
+    )
+  `);
 }
 
 function cleanBase(url) {
@@ -59,7 +74,20 @@ async function pingNode(node) {
 router.get("/", async (req, res, next) => {
   try {
     await ensureNodeTable();
-    const { rows } = await pool.query("SELECT * FROM provider_nodes ORDER BY id DESC");
+    const { rows } = await pool.query(`
+      SELECT n.*,
+        t.battery_percent,
+        t.is_charging,
+        t.battery_status,
+        t.battery_health,
+        t.battery_temperature_c,
+        t.ip AS telemetry_ip,
+        t.last_seen_at AS telemetry_last_seen_at,
+        t.last_low_battery_alert_at
+      FROM provider_nodes n
+      LEFT JOIN node_telemetry t ON t.node_id = n.id
+      ORDER BY n.id DESC
+    `);
     res.json(rows);
   } catch (err) {
     next(err);
