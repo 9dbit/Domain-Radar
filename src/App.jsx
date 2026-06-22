@@ -1,63 +1,30 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut,
-  Settings, Send, Download, Trash2, Pencil, Power, Search, Radio, Bell,
-  FolderKanban, BarChart3, Plus, Globe2, Server
-} from "lucide-react";
+import { RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut, Settings, Send, Download, Trash2, Pencil, Power, Search, Radio, Bell, FolderKanban, BarChart3, Plus, Globe2, Server } from "lucide-react";
 import "./style.css";
 
 async function api(url, opt = {}) {
-  const res = await fetch(url, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    ...opt
-  });
+  const res = await fetch(url, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opt });
   let data = {};
   try { data = await res.json(); } catch (_) {}
-  if (!res.ok) {
-    const err = new Error(data.error || "Request failed");
-    err.status = res.status;
-    throw err;
-  }
+  if (!res.ok) { const err = new Error(data.error || "Request failed"); err.status = res.status; throw err; }
   return data;
 }
 
-function Badge({ status }) {
-  return <span className={`badge ${status || "unknown"}`}>{status || "unknown"}</span>;
-}
+function Badge({ status }) { return <span className={`badge ${status || "unknown"}`}>{status || "unknown"}</span>; }
+function HealthBadge({ status }) { return <span className={`healthBadge ${status || "unknown"}`}>{status || "unknown"}</span>; }
 
 function Login({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
   async function submit(e) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
-      await onLogin();
-    } catch (_) {
-      setError("Password salah atau session tidak valid.");
-    } finally {
-      setLoading(false);
-    }
+    e.preventDefault(); setLoading(true); setError("");
+    try { await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) }); await onLogin(); }
+    catch (_) { setError("Password salah atau session tidak valid."); }
+    finally { setLoading(false); }
   }
-
-  return (
-    <div className="loginPage">
-      <form className="loginCard" onSubmit={submit}>
-        <div className="loginIcon"><Lock size={26} /></div>
-        <h1>Domain Radar</h1>
-        <p>Masuk ke dashboard monitoring.</p>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Admin password" autoFocus />
-        {error ? <div className="errorBox">{error}</div> : null}
-        <button disabled={loading}>{loading ? "Checking..." : "Login"}</button>
-      </form>
-    </div>
-  );
+  return <div className="loginPage"><form className="loginCard" onSubmit={submit}><div className="loginIcon"><Lock size={26}/></div><h1>Domain Radar</h1><p>Masuk ke dashboard monitoring.</p><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Admin password" autoFocus />{error ? <div className="errorBox">{error}</div> : null}<button disabled={loading}>{loading ? "Checking..." : "Login"}</button></form></div>;
 }
 
 function Dashboard({ onLogout }) {
@@ -77,14 +44,8 @@ function Dashboard({ onLogout }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
-
-  const [settings, setSettings] = useState({
-    check_interval_seconds: "60",
-    retry_confirmations: "3",
-    status_keywords: "internetpositif,trustpositif,nawala",
-    telegram_bot_token: "",
-    telegram_chat_id: ""
-  });
+  const [historyFilter, setHistoryFilter] = useState("all");
+  const [settings, setSettings] = useState({ check_interval_seconds: "60", retry_confirmations: "3", status_keywords: "internetpositif,trustpositif,nawala", telegram_bot_token: "", telegram_chat_id: "" });
   const [projectForm, setProjectForm] = useState({ name: "", notes: "", domain: "", bulk: "" });
   const [projectDomains, setProjectDomains] = useState({});
   const [rankForm, setRankForm] = useState({ project_name: "", domain: "", keyword: "", target_url: "" });
@@ -93,121 +54,35 @@ function Dashboard({ onLogout }) {
 
   async function load() {
     try {
-      const [ov, dom, res, px, set, al, pr, rk, rr, nd] = await Promise.all([
-        api("/api/overview"), api("/api/domains"), api("/api/results"), api("/api/proxies"),
-        api("/api/settings"), api("/api/alerts"), api("/api/projects"), api("/api/rank/keywords"),
-        api("/api/rank/results"), api("/api/nodes")
-      ]);
-      setOverview(ov || {});
-      setDomains(Array.isArray(dom) ? dom : []);
-      setResults(Array.isArray(res) ? res : []);
-      setProxies(Array.isArray(px) ? px : []);
-      setSettings(set || settings);
-      setAlerts(Array.isArray(al) ? al : []);
-      setProjects(Array.isArray(pr) ? pr : []);
-      setRank(Array.isArray(rk) ? rk : []);
-      setRankResults(Array.isArray(rr) ? rr : []);
-      setNodes(Array.isArray(nd) ? nd : []);
-    } catch (err) {
-      if (err.status === 401) onLogout();
-      else setNotice(err.message || "Gagal load data.");
-    }
+      const [ov, dom, res, px, set, al, pr, rk, rr, nd] = await Promise.all([api("/api/overview"), api("/api/domains"), api("/api/results"), api("/api/proxies"), api("/api/settings"), api("/api/alerts"), api("/api/projects"), api("/api/rank/keywords"), api("/api/rank/results"), api("/api/nodes")]);
+      setOverview(ov || {}); setDomains(Array.isArray(dom) ? dom : []); setResults(Array.isArray(res) ? res : []); setProxies(Array.isArray(px) ? px : []); setSettings(set || settings); setAlerts(Array.isArray(al) ? al : []); setProjects(Array.isArray(pr) ? pr : []); setRank(Array.isArray(rk) ? rk : []); setRankResults(Array.isArray(rr) ? rr : []); setNodes(Array.isArray(nd) ? nd : []);
+    } catch (err) { if (err.status === 401) onLogout(); else setNotice(err.message || "Gagal load data."); }
   }
 
   useEffect(() => { load(); }, []);
-  useEffect(() => {
-    if (!auto) return undefined;
-    const timer = setInterval(load, 15000);
-    return () => clearInterval(timer);
-  }, [auto]);
+  useEffect(() => { if (!auto) return undefined; const timer = setInterval(load, 15000); return () => clearInterval(timer); }, [auto]);
 
-  const projectOptions = useMemo(() => Array.from(new Set([
-    ...domains.map((d) => d.project_name || "No Project"),
-    ...projects.map((p) => p.project_name || p.name).filter(Boolean)
-  ])).sort(), [domains, projects]);
+  const projectOptions = useMemo(() => Array.from(new Set([...domains.map((d) => d.project_name || "No Project"), ...projects.map((p) => p.project_name || p.name).filter(Boolean)])).sort(), [domains, projects]);
+  const grouped = useMemo(() => projectOptions.map((name) => ({ name, domains: domains.filter((d) => (d.project_name || "No Project") === name), summary: projects.find((p) => p.project_name === name) || {} })), [projectOptions, domains, projects]);
+  const filtered = useMemo(() => { const q = search.toLowerCase().trim(); return domains.filter((d) => { const project = d.project_name || "No Project"; return (!q || d.domain.toLowerCase().includes(q) || project.toLowerCase().includes(q)) && (status === "all" || d.global_status === status) && (projectFilter === "all" || project === projectFilter); }); }, [domains, search, status, projectFilter]);
+  const historyRows = useMemo(() => historyFilter === "all" ? results : results.filter((r) => String(r.checker_type || "").includes(historyFilter) || String(r.provider_name || "").toLowerCase().includes(historyFilter)), [results, historyFilter]);
 
-  const grouped = useMemo(() => projectOptions.map((name) => ({
-    name,
-    domains: domains.filter((d) => (d.project_name || "No Project") === name),
-    summary: projects.find((p) => p.project_name === name) || {}
-  })), [projectOptions, domains, projects]);
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    return domains.filter((d) => {
-      const project = d.project_name || "No Project";
-      return (!q || d.domain.toLowerCase().includes(q) || project.toLowerCase().includes(q)) &&
-        (status === "all" || d.global_status === status) &&
-        (projectFilter === "all" || project === projectFilter);
-    });
-  }, [domains, search, status, projectFilter]);
-
-  function getProjectInput(name) {
-    return projectDomains[name] || { domain: "", bulk: "" };
-  }
-
-  function setProjectInput(name, patch) {
-    setProjectDomains((prev) => ({ ...prev, [name]: { ...(prev[name] || { domain: "", bulk: "" }), ...patch } }));
-  }
-
-  async function saveSettings(e) {
-    e?.preventDefault();
-    const saved = await api("/api/settings", { method: "POST", body: JSON.stringify(settings) });
-    setSettings(saved);
-    setNotice("Settings saved.");
-  }
-
-  async function addProject(e) {
-    e.preventDefault();
-    const name = projectForm.name.trim();
-    if (!name) return;
-    await api("/api/projects", { method: "POST", body: JSON.stringify({ name, notes: projectForm.notes }) });
-    if (projectForm.domain.trim()) await api("/api/domains", { method: "POST", body: JSON.stringify({ domain: projectForm.domain, project_name: name }) });
-    if (projectForm.bulk.trim()) {
-      const text = projectForm.bulk.split(/\r?\n/).map((line) => {
-        const trimmed = line.trim();
-        if (!trimmed) return "";
-        return trimmed.includes(",") ? trimmed : `${trimmed}, ${name}`;
-      }).join("\n");
-      await api("/api/domains/bulk", { method: "POST", body: JSON.stringify({ text }) });
-    }
-    setProjectForm({ name: "", notes: "", domain: "", bulk: "" });
-    setNotice("Project added.");
-    load();
-  }
-
-  async function addDomainToProject(projectName) {
-    const input = getProjectInput(projectName);
-    if (!input.domain.trim()) return;
-    await api("/api/domains", { method: "POST", body: JSON.stringify({ domain: input.domain, project_name: projectName === "No Project" ? "" : projectName }) });
-    setProjectInput(projectName, { domain: "" });
-    load();
-  }
-
-  async function bulkImportToProject(projectName) {
-    const input = getProjectInput(projectName);
-    if (!input.bulk.trim()) return;
-    const text = input.bulk.split(/\r?\n/).map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return "";
-      if (projectName === "No Project") return trimmed.split(/[,;\t]/)[0].trim();
-      return trimmed.includes(",") ? trimmed : `${trimmed}, ${projectName}`;
-    }).join("\n");
-    await api("/api/domains/bulk", { method: "POST", body: JSON.stringify({ text }) });
-    setProjectInput(projectName, { bulk: "" });
-    load();
-  }
-
+  function getProjectInput(name) { return projectDomains[name] || { domain: "", bulk: "" }; }
+  function setProjectInput(name, patch) { setProjectDomains((prev) => ({ ...prev, [name]: { ...(prev[name] || { domain: "", bulk: "" }), ...patch } })); }
+  async function saveSettings(e) { e?.preventDefault(); const saved = await api("/api/settings", { method: "POST", body: JSON.stringify(settings) }); setSettings(saved); setNotice("Settings saved."); }
+  async function addProject(e) { e.preventDefault(); const name = projectForm.name.trim(); if (!name) return; await api("/api/projects", { method: "POST", body: JSON.stringify({ name, notes: projectForm.notes }) }); if (projectForm.domain.trim()) await api("/api/domains", { method: "POST", body: JSON.stringify({ domain: projectForm.domain, project_name: name }) }); if (projectForm.bulk.trim()) { const text = projectForm.bulk.split(/\r?\n/).map((line) => { const trimmed = line.trim(); if (!trimmed) return ""; return trimmed.includes(",") ? trimmed : `${trimmed}, ${name}`; }).join("\n"); await api("/api/domains/bulk", { method: "POST", body: JSON.stringify({ text }) }); } setProjectForm({ name: "", notes: "", domain: "", bulk: "" }); setNotice("Project added."); load(); }
+  async function addDomainToProject(projectName) { const input = getProjectInput(projectName); if (!input.domain.trim()) return; await api("/api/domains", { method: "POST", body: JSON.stringify({ domain: input.domain, project_name: projectName === "No Project" ? "" : projectName }) }); setProjectInput(projectName, { domain: "" }); load(); }
+  async function bulkImportToProject(projectName) { const input = getProjectInput(projectName); if (!input.bulk.trim()) return; const text = input.bulk.split(/\r?\n/).map((line) => { const trimmed = line.trim(); if (!trimmed) return ""; if (projectName === "No Project") return trimmed.split(/[,;\t]/)[0].trim(); return trimmed.includes(",") ? trimmed : `${trimmed}, ${projectName}`; }).join("\n"); await api("/api/domains/bulk", { method: "POST", body: JSON.stringify({ text }) }); setProjectInput(projectName, { bulk: "" }); load(); }
   async function delProject(name) { if (confirm(`Delete project card ${name}? Domain tidak ikut terhapus.`)) { await api(`/api/projects/${encodeURIComponent(name)}`, { method: "DELETE" }); load(); } }
   async function tgTest() { setNotice("Sending Telegram test..."); const r = await api("/api/telegram/test", { method: "POST" }); setNotice(r.ok ? "Telegram test sent." : "Telegram test failed."); }
   async function editD(d) { const nextDomain = prompt("Edit domain", d.domain); if (!nextDomain) return; const nextProject = prompt("Project name", d.project_name || "") ?? d.project_name; await api(`/api/domains/${d.id}`, { method: "PATCH", body: JSON.stringify({ domain: nextDomain, project_name: nextProject }) }); load(); }
   async function toggleD(d) { await api(`/api/domains/${d.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !d.is_active }) }); load(); }
-  async function checkD(d) { setNotice(`Checking ${d.domain}...`); await api(`/api/check/domain/${d.id}`, { method: "POST" }); load(); }
+  async function checkD(d) { setNotice(`Checking ${d.domain}...`); await api(`/api/check/domain/${d.id}`, { method: "POST" }); setNotice(`Checked ${d.domain}`); load(); }
   async function delD(d) { if (confirm(`Delete ${d.domain}?`)) { await api(`/api/domains/${d.id}`, { method: "DELETE" }); load(); } }
   async function addProxy(e) { e.preventDefault(); await api("/api/proxies", { method: "POST", body: JSON.stringify(proxy) }); setProxy({ name: "", provider_name: "", proxy_url: "", proxy_type: "http" }); load(); }
   async function delProxy(p) { if (confirm(`Delete proxy ${p.name}?`)) { await api(`/api/proxies/${p.id}`, { method: "DELETE" }); load(); } }
-  async function addNode(e) { e.preventDefault(); await api("/api/nodes", { method: "POST", body: JSON.stringify(nodeForm) }); setNodeForm({ name: "", provider_name: "", network_type: "broadband", endpoint_url: "", secret_key: "" }); load(); }
-  async function pingNode(n) { setNotice(`Pinging ${n.name}...`); await api(`/api/nodes/${n.id}/ping`, { method: "POST" }); load(); }
+  async function addNode(e) { e.preventDefault(); await api("/api/nodes", { method: "POST", body: JSON.stringify(nodeForm) }); setNodeForm({ name: "", provider_name: "", network_type: "broadband", endpoint_url: "", secret_key: "" }); setNotice("Node added. Klik ping untuk cek health."); load(); }
+  async function pingNode(n) { setNotice(`Pinging ${n.name}...`); const r = await api(`/api/nodes/${n.id}/ping`, { method: "POST" }); setNotice(r.ok ? `${n.name} online` : `${n.name} offline: ${r.error || "unknown"}`); load(); }
   async function toggleNode(n) { await api(`/api/nodes/${n.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !n.is_active }) }); load(); }
   async function delNode(n) { if (confirm(`Delete node ${n.name}?`)) { await api(`/api/nodes/${n.id}`, { method: "DELETE" }); load(); } }
   async function manual() { setNotice("Manual check running..."); await api("/api/check/manual", { method: "POST" }); setNotice("Manual check selesai."); load(); }
@@ -216,44 +91,19 @@ function Dashboard({ onLogout }) {
   async function checkAllRank() { await api("/api/rank/check-all", { method: "POST" }); load(); }
   async function delRank(k) { if (confirm(`Delete keyword ${k.keyword}?`)) { await api(`/api/rank/keywords/${k.id}`, { method: "DELETE" }); load(); } }
   async function logout() { await api("/api/auth/logout", { method: "POST" }); onLogout(); }
-  function csv(path) { open(path, "_blank"); }
+  function csv(path) { window.open(path, "_blank"); }
 
-  function renderNav() {
-    return <aside><h1>Domain Radar</h1><p>Command Center</p><button className={page === "dashboard" ? "navActive" : ""} onClick={() => setPage("dashboard")}><Globe2 size={16}/> Dashboard</button><button className={page === "projects" ? "navActive" : ""} onClick={() => setPage("projects")}><FolderKanban size={16}/> Projects</button><button className={page === "rank" ? "navActive" : ""} onClick={() => setPage("rank")}><BarChart3 size={16}/> Google Rank</button><button className={page === "settings" ? "navActive" : ""} onClick={() => setPage("settings")}><Settings size={16}/> Settings</button><button onClick={manual}><RefreshCw size={16}/> Manual Check All</button><button onClick={() => setAuto(!auto)}><Radio size={16}/> Auto: {auto ? "ON" : "OFF"}</button><button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>{notice ? <p className="sideNotice">{notice}</p> : null}</aside>;
-  }
-
-  function renderCards() {
-    return <section className="cards"><div className="card"><ShieldAlert/><b>{overview.total || 0}</b><span>Total</span></div><div className="card"><CheckCircle/><b>{overview.working || 0}</b><span>Working</span></div><div className="card"><AlertTriangle/><b>{overview.warning || 0}</b><span>Warning</span></div><div className="card"><Ban/><b>{overview.blocked || 0}</b><span>Blocked</span></div></section>;
-  }
-
-  function renderAlerts() {
-    return <section className="panel alertPanel"><div className="panelHead"><h2><Bell size={20}/> Alert Center</h2><span className="muted">Latest 100 alerts</span></div><div className="alertList">{alerts.length ? alerts.slice(0, 8).map((a) => <div className="alertItem" key={a.id}><Badge status={a.new_status}/><div><b>{a.domain || "Deleted domain"}</b><small>{a.old_status} → {a.new_status} · {new Date(a.created_at).toLocaleString()}</small></div></div>) : <p className="muted">Belum ada alert.</p>}</div></section>;
-  }
-
-  function renderDomainTable(list = filtered) {
-    return <table><thead><tr><th>Domain</th><th>Project</th><th>Status</th><th>Last</th><th>Checked</th><th>Active</th><th>Actions</th></tr></thead><tbody>{list.map((d) => <tr key={d.id}><td className="domainCell">{d.domain}</td><td>{d.project_name || "-"}</td><td><Badge status={d.global_status}/></td><td>{d.last_status || "-"}</td><td>{d.last_checked_at ? new Date(d.last_checked_at).toLocaleString() : "-"}</td><td>{d.is_active ? "Yes" : "No"}</td><td><div className="actions"><button className="iconBtn" onClick={() => checkD(d)}><RefreshCw size={14}/></button><button className="iconBtn" onClick={() => editD(d)}><Pencil size={14}/></button><button className="iconBtn" onClick={() => toggleD(d)}><Power size={14}/></button><button className="iconBtn danger" onClick={() => delD(d)}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table>;
-  }
-
-  function renderProjectDomainBox(name) {
-    const input = getProjectInput(name);
-    return <div className="projectAddBox"><div className="projectAddRow"><input value={input.domain} onChange={(e) => setProjectInput(name, { domain: e.target.value })} placeholder={`Add domain to ${name}`} /><button type="button" onClick={() => addDomainToProject(name)}>Add</button></div><textarea value={input.bulk} onChange={(e) => setProjectInput(name, { bulk: e.target.value })} placeholder={`Bulk import to ${name}\nexample.com\nexample.net`} /><button type="button" onClick={() => bulkImportToProject(name)}>Bulk Import to {name}</button></div>;
-  }
-
-  function renderDashboardPage() {
-    return <>{renderCards()}{renderAlerts()}<section className="panel"><div className="panelHead"><h2>Domains</h2><button className="smallBtn" onClick={() => csv("/api/export/domains.csv")}><Download size={15}/> CSV</button></div><div className="filters"><div className="searchBox"><Search size={16}/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search domain or project..."/></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All status</option><option value="working">Working</option><option value="warning">Warning</option><option value="blocked">Blocked</option><option value="unknown">Unknown</option></select><select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="all">All projects</option>{projectOptions.map((p) => <option key={p}>{p}</option>)}</select></div>{renderDomainTable()}</section></>;
-  }
-
-  function renderProjectsPage() {
-    return <><section className="panel createProjectPanel"><div className="panelHead"><h2><FolderKanban size={20}/> Create New Project</h2><button className="smallBtn" onClick={load}><RefreshCw size={15}/> Refresh</button></div><form onSubmit={addProject} className="createProjectForm"><input value={projectForm.name} onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })} placeholder="Project name, contoh: Empire88" /><input value={projectForm.notes} onChange={(e) => setProjectForm({ ...projectForm, notes: e.target.value })} placeholder="Notes optional" /><input value={projectForm.domain} onChange={(e) => setProjectForm({ ...projectForm, domain: e.target.value })} placeholder="Initial domain optional" /><button><Plus size={16}/> Create Project</button><textarea className="wide" value={projectForm.bulk} onChange={(e) => setProjectForm({ ...projectForm, bulk: e.target.value })} placeholder="Bulk domain optional, one domain per line" /></form></section><div className="projectStack">{grouped.map((g) => <section className="projectDetail" key={g.name}><div className="projectHeaderGrid"><div><h2>{g.name}</h2><p className="muted">{g.domains.length} domain assigned</p></div><div className="projectMetric"><b>{g.domains.length}</b><span>Total</span></div><div className="projectMetric"><b>{g.domains.filter((d) => d.global_status === "working").length}</b><span>Working</span></div><div className="projectMetric"><b>{g.domains.filter((d) => d.global_status === "warning").length}</b><span>Warning</span></div><div className="projectMetric"><b>{g.domains.filter((d) => d.global_status === "blocked").length}</b><span>Blocked</span></div><div>{g.name !== "No Project" ? <button className="smallBtn danger" onClick={() => delProject(g.name)}>Delete Card</button> : null}</div></div>{renderProjectDomainBox(g.name)}{renderDomainTable(g.domains)}</section>)}</div></>;
-  }
-
-  function renderRankPage() {
-    return <section className="panel"><div className="panelHead"><h2><BarChart3 size={20}/> Google Rank Checker</h2><button className="smallBtn" onClick={checkAllRank}><RefreshCw size={15}/> Check All</button></div><form onSubmit={addRank} className="rankForm"><input value={rankForm.project_name} onChange={(e) => setRankForm({ ...rankForm, project_name: e.target.value })} placeholder="Project name"/><input value={rankForm.domain} onChange={(e) => setRankForm({ ...rankForm, domain: e.target.value })} placeholder="targetdomain.com"/><input value={rankForm.keyword} onChange={(e) => setRankForm({ ...rankForm, keyword: e.target.value })} placeholder="keyword"/><input value={rankForm.target_url} onChange={(e) => setRankForm({ ...rankForm, target_url: e.target.value })} placeholder="Target URL optional"/><button>Add Keyword</button></form><p className="hint">Butuh Replit Secrets: GOOGLE_SEARCH_API_KEY dan GOOGLE_SEARCH_CX.</p><table><thead><tr><th>Project</th><th>Domain</th><th>Keyword</th><th>Position</th><th>Page</th><th>Last Check</th><th>Actions</th></tr></thead><tbody>{rank.map((k) => <tr key={k.id}><td>{k.project_name || "-"}</td><td className="domainCell">{k.domain}</td><td>{k.keyword}</td><td>{k.last_position || "Not found"}</td><td>{k.last_page || "-"}</td><td>{k.last_checked_at ? new Date(k.last_checked_at).toLocaleString() : "-"}</td><td><div className="actions"><button className="iconBtn" onClick={() => checkRank(k.id)}><RefreshCw size={14}/></button><button className="iconBtn danger" onClick={() => delRank(k)}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table>{rankResults.length ? <p className="hint">Latest: {rankResults[0].keyword} · {rankResults[0].domain} · position {rankResults[0].position || "not found"}</p> : null}</section>;
-  }
-
-  function renderSettingsPage() {
-    return <section className="panel"><div className="panelHead"><h2><Settings size={20}/> Settings</h2><div className="tabs"><button className={tab === "system" ? "navActive" : ""} onClick={() => setTab("system")}>System</button><button className={tab === "telegram" ? "navActive" : ""} onClick={() => setTab("telegram")}>Telegram</button><button className={tab === "proxy" ? "navActive" : ""} onClick={() => setTab("proxy")}>Proxy Center</button><button className={tab === "nodes" ? "navActive" : ""} onClick={() => setTab("nodes")}>Provider Nodes</button></div></div>{tab === "system" && <form onSubmit={saveSettings} className="settingsGrid"><label><span>Check interval seconds</span><input value={settings.check_interval_seconds} onChange={(e) => setSettings({ ...settings, check_interval_seconds: e.target.value })}/></label><label><span>Retry confirmations</span><input value={settings.retry_confirmations} onChange={(e) => setSettings({ ...settings, retry_confirmations: e.target.value })}/></label><label className="wide"><span>Status keywords</span><input value={settings.status_keywords} onChange={(e) => setSettings({ ...settings, status_keywords: e.target.value })}/></label><button>Save System</button></form>}{tab === "telegram" && <form onSubmit={saveSettings} className="settingsGrid"><label className="wide"><span>Telegram Bot Token</span><input value={settings.telegram_bot_token || ""} onChange={(e) => setSettings({ ...settings, telegram_bot_token: e.target.value })} placeholder="123456:ABC..."/></label><label><span>Telegram Chat ID</span><input value={settings.telegram_chat_id || ""} onChange={(e) => setSettings({ ...settings, telegram_chat_id: e.target.value })} placeholder="-100xxxx or user id"/></label><button>Save Telegram</button><button type="button" onClick={tgTest}><Send size={16}/> Test</button></form>}{tab === "proxy" && <div><form onSubmit={addProxy} className="grid"><input placeholder="Name" value={proxy.name} onChange={(e) => setProxy({ ...proxy, name: e.target.value })}/><input placeholder="Provider" value={proxy.provider_name} onChange={(e) => setProxy({ ...proxy, provider_name: e.target.value })}/><input placeholder="Proxy URL" value={proxy.proxy_url} onChange={(e) => setProxy({ ...proxy, proxy_url: e.target.value })}/><select value={proxy.proxy_type} onChange={(e) => setProxy({ ...proxy, proxy_type: e.target.value })}><option value="http">HTTP/HTTPS</option><option value="socks">SOCKS</option></select><button>Add Proxy</button></form><div className="chips">{proxies.map((p) => <span key={p.id}>{p.provider_name}: {p.name} · {p.last_health_status || "unknown"}<button className="chipDelete" onClick={() => delProxy(p)}>×</button></span>)}</div></div>}{tab === "nodes" && <div><p className="hint">Provider Node = real checker di jaringan Telkomsel/XL/Indosat/IndiHome/Biznet lewat mini PC, VPS, Android Termux, atau Raspberry Pi.</p><form onSubmit={addNode} className="nodeForm"><input placeholder="Node name TELKOMSEL-JKT-01" value={nodeForm.name} onChange={(e) => setNodeForm({ ...nodeForm, name: e.target.value })}/><input placeholder="Provider Telkomsel" value={nodeForm.provider_name} onChange={(e) => setNodeForm({ ...nodeForm, provider_name: e.target.value })}/><select value={nodeForm.network_type} onChange={(e) => setNodeForm({ ...nodeForm, network_type: e.target.value })}><option value="mobile">Mobile</option><option value="broadband">Broadband</option><option value="proxy">Proxy</option><option value="vps">VPS</option></select><input placeholder="Endpoint https://node-url" value={nodeForm.endpoint_url} onChange={(e) => setNodeForm({ ...nodeForm, endpoint_url: e.target.value })}/><input placeholder="Secret key" value={nodeForm.secret_key} onChange={(e) => setNodeForm({ ...nodeForm, secret_key: e.target.value })}/><button><Server size={16}/> Add Node</button></form><table><thead><tr><th>Name</th><th>Provider</th><th>Type</th><th>Endpoint</th><th>Health</th><th>Active</th><th>Actions</th></tr></thead><tbody>{nodes.map((n) => <tr key={n.id}><td className="domainCell">{n.name}</td><td>{n.provider_name}</td><td>{n.network_type}</td><td>{n.endpoint_url}</td><td>{n.last_health_status || "unknown"}</td><td>{n.is_active ? "Yes" : "No"}</td><td><div className="actions"><button className="iconBtn" onClick={() => pingNode(n)}><RefreshCw size={14}/></button><button className="iconBtn" onClick={() => toggleNode(n)}><Power size={14}/></button><button className="iconBtn danger" onClick={() => delNode(n)}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table></div>}</section>;
-  }
+  function renderNav() { return <aside><h1>Domain Radar</h1><p>Command Center</p><button className={page === "dashboard" ? "navActive" : ""} onClick={() => setPage("dashboard")}><Globe2 size={16}/> Dashboard</button><button className={page === "projects" ? "navActive" : ""} onClick={() => setPage("projects")}><FolderKanban size={16}/> Projects</button><button className={page === "rank" ? "navActive" : ""} onClick={() => setPage("rank")}><BarChart3 size={16}/> Google Rank</button><button className={page === "settings" ? "navActive" : ""} onClick={() => setPage("settings")}><Settings size={16}/> Settings</button><button onClick={manual}><RefreshCw size={16}/> Manual Check All</button><button onClick={() => setAuto(!auto)}><Radio size={16}/> Auto: {auto ? "ON" : "OFF"}</button><button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>{notice ? <p className="sideNotice">{notice}</p> : null}</aside>; }
+  function renderCards() { return <section className="cards"><div className="card"><ShieldAlert/><b>{overview.total || 0}</b><span>Total</span></div><div className="card"><CheckCircle/><b>{overview.working || 0}</b><span>Working</span></div><div className="card"><AlertTriangle/><b>{overview.warning || 0}</b><span>Warning</span></div><div className="card"><Ban/><b>{overview.blocked || 0}</b><span>Blocked</span></div></section>; }
+  function renderAlerts() { return <section className="panel alertPanel"><div className="panelHead"><h2><Bell size={20}/> Alert Center</h2><span className="muted">Latest 100 alerts</span></div><div className="alertList">{alerts.length ? alerts.slice(0, 5).map((a) => <div className="alertItem" key={a.id}><Badge status={a.new_status}/><div><b>{a.domain || "Deleted domain"}</b><small>{a.old_status} → {a.new_status} · {new Date(a.created_at).toLocaleString()}</small></div></div>) : <p className="muted">Belum ada alert.</p>}</div></section>; }
+  function renderDomainTable(list = filtered) { return <table><thead><tr><th>Domain</th><th>Project</th><th>Status</th><th>Last</th><th>Checked</th><th>Active</th><th>Actions</th></tr></thead><tbody>{list.map((d) => <tr key={d.id}><td className="domainCell">{d.domain}</td><td>{d.project_name || "-"}</td><td><Badge status={d.global_status}/></td><td>{d.last_status || "-"}</td><td>{d.last_checked_at ? new Date(d.last_checked_at).toLocaleString() : "-"}</td><td>{d.is_active ? "Yes" : "No"}</td><td><div className="actions"><button className="iconBtn" onClick={() => checkD(d)}><RefreshCw size={14}/></button><button className="iconBtn" onClick={() => editD(d)}><Pencil size={14}/></button><button className="iconBtn" onClick={() => toggleD(d)}><Power size={14}/></button><button className="iconBtn danger" onClick={() => delD(d)}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table>; }
+  function renderNodeStatus() { return <section className="panel"><div className="panelHead"><h2><Server size={20}/> Provider Node Health</h2><button className="smallBtn" onClick={() => { setPage("settings"); setTab("nodes"); }}>Open Node Center</button></div>{nodes.length ? <div className="nodeStatusGrid">{nodes.map((n) => <div className="nodeStatusCard" key={n.id}><div><b>{n.name}</b><small>{n.provider_name} · {n.network_type}</small></div><HealthBadge status={n.last_health_status || "unknown"}/><small>Last ping: {n.last_ping_at ? new Date(n.last_ping_at).toLocaleString() : "never"}</small><button className="smallBtn" onClick={() => pingNode(n)}><RefreshCw size={14}/> Ping</button></div>)}</div> : <p className="muted">Belum ada node. Tambahkan di Settings → Provider Nodes.</p>}</section>; }
+  function renderHistory() { return <section className="panel"><div className="panelHead"><h2>Latest Check History</h2><div className="tabs"><button className={historyFilter === "all" ? "navActive" : ""} onClick={() => setHistoryFilter("all")}>All</button><button className={historyFilter === "node" ? "navActive" : ""} onClick={() => setHistoryFilter("node")}>Nodes</button><button className={historyFilter === "proxy" ? "navActive" : ""} onClick={() => setHistoryFilter("proxy")}>Proxy</button><button className={historyFilter === "direct" ? "navActive" : ""} onClick={() => setHistoryFilter("direct")}>Direct</button><button className="smallBtn" onClick={() => csv("/api/export/results.csv")}><Download size={15}/> CSV</button></div></div><table><thead><tr><th>Time</th><th>Domain</th><th>Provider</th><th>Type</th><th>Status</th><th>HTTP</th><th>Latency</th><th>Reason</th></tr></thead><tbody>{historyRows.slice(0, 60).map((r) => <tr key={r.id}><td>{r.checked_at ? new Date(r.checked_at).toLocaleString() : "-"}</td><td className="domainCell">{r.domain || "-"}</td><td>{r.provider_name || "-"}</td><td>{r.checker_type || "-"}</td><td><Badge status={r.status}/></td><td>{r.http_status || "-"}</td><td>{r.latency_ms ? `${r.latency_ms}ms` : "-"}</td><td>{r.reason || "-"}</td></tr>)}</tbody></table>{!historyRows.length ? <p className="muted">Belum ada history. Klik refresh pada domain atau Manual Check All.</p> : null}</section>; }
+  function renderProjectDomainBox(name) { const input = getProjectInput(name); return <div className="projectAddBox"><div className="projectAddRow"><input value={input.domain} onChange={(e) => setProjectInput(name, { domain: e.target.value })} placeholder={`Add domain to ${name}`} /><button type="button" onClick={() => addDomainToProject(name)}>Add</button></div><textarea value={input.bulk} onChange={(e) => setProjectInput(name, { bulk: e.target.value })} placeholder={`Bulk import to ${name}\nexample.com\nexample.net`} /><button type="button" onClick={() => bulkImportToProject(name)}>Bulk Import to {name}</button></div>; }
+  function renderDashboardPage() { return <>{renderCards()}{renderNodeStatus()}{renderAlerts()}<section className="panel"><div className="panelHead"><h2>Domains</h2><button className="smallBtn" onClick={() => csv("/api/export/domains.csv")}><Download size={15}/> CSV</button></div><div className="filters"><div className="searchBox"><Search size={16}/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search domain or project..."/></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All status</option><option value="working">Working</option><option value="warning">Warning</option><option value="blocked">Blocked</option><option value="unknown">Unknown</option></select><select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="all">All projects</option>{projectOptions.map((p) => <option key={p}>{p}</option>)}</select></div>{renderDomainTable()}</section>{renderHistory()}</>; }
+  function renderProjectsPage() { return <><section className="panel createProjectPanel"><div className="panelHead"><h2><FolderKanban size={20}/> Create New Project</h2><button className="smallBtn" onClick={load}><RefreshCw size={15}/> Refresh</button></div><form onSubmit={addProject} className="createProjectForm"><input value={projectForm.name} onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })} placeholder="Project name, contoh: Empire88" /><input value={projectForm.notes} onChange={(e) => setProjectForm({ ...projectForm, notes: e.target.value })} placeholder="Notes optional" /><input value={projectForm.domain} onChange={(e) => setProjectForm({ ...projectForm, domain: e.target.value })} placeholder="Initial domain optional" /><button><Plus size={16}/> Create Project</button><textarea className="wide" value={projectForm.bulk} onChange={(e) => setProjectForm({ ...projectForm, bulk: e.target.value })} placeholder="Bulk domain optional, one domain per line" /></form></section><div className="projectStack">{grouped.map((g) => <section className="projectDetail" key={g.name}><div className="projectHeaderGrid"><div><h2>{g.name}</h2><p className="muted">{g.domains.length} domain assigned</p></div><div className="projectMetric"><b>{g.domains.length}</b><span>Total</span></div><div className="projectMetric"><b>{g.domains.filter((d) => d.global_status === "working").length}</b><span>Working</span></div><div className="projectMetric"><b>{g.domains.filter((d) => d.global_status === "warning").length}</b><span>Warning</span></div><div className="projectMetric"><b>{g.domains.filter((d) => d.global_status === "blocked").length}</b><span>Blocked</span></div><div>{g.name !== "No Project" ? <button className="smallBtn danger" onClick={() => delProject(g.name)}>Delete Card</button> : null}</div></div>{renderProjectDomainBox(g.name)}{renderDomainTable(g.domains)}</section>)}</div></>; }
+  function renderRankPage() { return <section className="panel"><div className="panelHead"><h2><BarChart3 size={20}/> Google Rank Checker</h2><button className="smallBtn" onClick={checkAllRank}><RefreshCw size={15}/> Check All</button></div><form onSubmit={addRank} className="rankForm"><input value={rankForm.project_name} onChange={(e) => setRankForm({ ...rankForm, project_name: e.target.value })} placeholder="Project name"/><input value={rankForm.domain} onChange={(e) => setRankForm({ ...rankForm, domain: e.target.value })} placeholder="targetdomain.com"/><input value={rankForm.keyword} onChange={(e) => setRankForm({ ...rankForm, keyword: e.target.value })} placeholder="keyword"/><input value={rankForm.target_url} onChange={(e) => setRankForm({ ...rankForm, target_url: e.target.value })} placeholder="Target URL optional"/><button>Add Keyword</button></form><p className="hint">Butuh Replit Secrets: GOOGLE_SEARCH_API_KEY dan GOOGLE_SEARCH_CX.</p><table><thead><tr><th>Project</th><th>Domain</th><th>Keyword</th><th>Position</th><th>Page</th><th>Last Check</th><th>Actions</th></tr></thead><tbody>{rank.map((k) => <tr key={k.id}><td>{k.project_name || "-"}</td><td className="domainCell">{k.domain}</td><td>{k.keyword}</td><td>{k.last_position || "Not found"}</td><td>{k.last_page || "-"}</td><td>{k.last_checked_at ? new Date(k.last_checked_at).toLocaleString() : "-"}</td><td><div className="actions"><button className="iconBtn" onClick={() => checkRank(k.id)}><RefreshCw size={14}/></button><button className="iconBtn danger" onClick={() => delRank(k)}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table>{rankResults.length ? <p className="hint">Latest: {rankResults[0].keyword} · {rankResults[0].domain} · position {rankResults[0].position || "not found"}</p> : null}</section>; }
+  function renderSettingsPage() { return <section className="panel"><div className="panelHead"><h2><Settings size={20}/> Settings</h2><div className="tabs"><button className={tab === "system" ? "navActive" : ""} onClick={() => setTab("system")}>System</button><button className={tab === "telegram" ? "navActive" : ""} onClick={() => setTab("telegram")}>Telegram</button><button className={tab === "proxy" ? "navActive" : ""} onClick={() => setTab("proxy")}>Proxy Center</button><button className={tab === "nodes" ? "navActive" : ""} onClick={() => setTab("nodes")}>Provider Nodes</button></div></div>{tab === "system" && <form onSubmit={saveSettings} className="settingsGrid"><label><span>Check interval seconds</span><input value={settings.check_interval_seconds} onChange={(e) => setSettings({ ...settings, check_interval_seconds: e.target.value })}/></label><label><span>Retry confirmations</span><input value={settings.retry_confirmations} onChange={(e) => setSettings({ ...settings, retry_confirmations: e.target.value })}/></label><label className="wide"><span>Status keywords</span><input value={settings.status_keywords} onChange={(e) => setSettings({ ...settings, status_keywords: e.target.value })}/></label><button>Save System</button></form>}{tab === "telegram" && <form onSubmit={saveSettings} className="settingsGrid"><label className="wide"><span>Telegram Bot Token</span><input value={settings.telegram_bot_token || ""} onChange={(e) => setSettings({ ...settings, telegram_bot_token: e.target.value })} placeholder="123456:ABC..."/></label><label><span>Telegram Chat ID</span><input value={settings.telegram_chat_id || ""} onChange={(e) => setSettings({ ...settings, telegram_chat_id: e.target.value })} placeholder="-100xxxx or user id"/></label><button>Save Telegram</button><button type="button" onClick={tgTest}><Send size={16}/> Test</button></form>}{tab === "proxy" && <div><form onSubmit={addProxy} className="grid"><input placeholder="Name" value={proxy.name} onChange={(e) => setProxy({ ...proxy, name: e.target.value })}/><input placeholder="Provider" value={proxy.provider_name} onChange={(e) => setProxy({ ...proxy, provider_name: e.target.value })}/><input placeholder="Proxy URL" value={proxy.proxy_url} onChange={(e) => setProxy({ ...proxy, proxy_url: e.target.value })}/><select value={proxy.proxy_type} onChange={(e) => setProxy({ ...proxy, proxy_type: e.target.value })}><option value="http">HTTP/HTTPS</option><option value="socks">SOCKS</option></select><button>Add Proxy</button></form><div className="chips">{proxies.map((p) => <span key={p.id}>{p.provider_name}: {p.name} · {p.last_health_status || "unknown"}<button className="chipDelete" onClick={() => delProxy(p)}>×</button></span>)}</div></div>}{tab === "nodes" && <div><p className="hint">Provider Node = real checker di jaringan Telkomsel/XL/Indosat/IndiHome/Biznet lewat mini PC, VPS, Android Termux, atau Raspberry Pi.</p><form onSubmit={addNode} className="nodeForm"><input placeholder="Node name TELKOMSEL-JKT-01" value={nodeForm.name} onChange={(e) => setNodeForm({ ...nodeForm, name: e.target.value })}/><input placeholder="Provider Telkomsel" value={nodeForm.provider_name} onChange={(e) => setNodeForm({ ...nodeForm, provider_name: e.target.value })}/><select value={nodeForm.network_type} onChange={(e) => setNodeForm({ ...nodeForm, network_type: e.target.value })}><option value="mobile">Mobile</option><option value="broadband">Broadband</option><option value="proxy">Proxy</option><option value="vps">VPS</option></select><input placeholder="Endpoint https://node-url" value={nodeForm.endpoint_url} onChange={(e) => setNodeForm({ ...nodeForm, endpoint_url: e.target.value })}/><input placeholder="Secret key" value={nodeForm.secret_key} onChange={(e) => setNodeForm({ ...nodeForm, secret_key: e.target.value })}/><button><Server size={16}/> Add Node</button></form><table><thead><tr><th>Name</th><th>Provider</th><th>Type</th><th>Endpoint</th><th>Health</th><th>Last Ping</th><th>Active</th><th>Actions</th></tr></thead><tbody>{nodes.map((n) => <tr key={n.id}><td className="domainCell">{n.name}</td><td>{n.provider_name}</td><td>{n.network_type}</td><td>{n.endpoint_url}</td><td><HealthBadge status={n.last_health_status || "unknown"}/></td><td>{n.last_ping_at ? new Date(n.last_ping_at).toLocaleString() : "never"}</td><td>{n.is_active ? "Yes" : "No"}</td><td><div className="actions"><button className="iconBtn" onClick={() => pingNode(n)}><RefreshCw size={14}/></button><button className="iconBtn" onClick={() => toggleNode(n)}><Power size={14}/></button><button className="iconBtn danger" onClick={() => delNode(n)}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table></div>}</section>; }
 
   return <div className="app">{renderNav()}<main>{page === "dashboard" && renderDashboardPage()}{page === "projects" && renderProjectsPage()}{page === "rank" && renderRankPage()}{page === "settings" && renderSettingsPage()}</main></div>;
 }
@@ -262,11 +112,7 @@ function App() {
   const [checked, setChecked] = useState(false);
   const [auth, setAuth] = useState(false);
   const [error, setError] = useState("");
-  async function checkAuth() {
-    try { const me = await api("/api/auth/me"); setAuth(Boolean(me.authenticated)); }
-    catch (err) { setError(err.message || "Auth check failed"); setAuth(false); }
-    finally { setChecked(true); }
-  }
+  async function checkAuth() { try { const me = await api("/api/auth/me"); setAuth(Boolean(me.authenticated)); } catch (err) { setError(err.message || "Auth check failed"); setAuth(false); } finally { setChecked(true); } }
   useEffect(() => { checkAuth(); }, []);
   if (!checked) return <div className="loading">Loading Domain Radar...</div>;
   if (!auth) return <><Login onLogin={async () => setAuth(true)}/>{error ? <div className="bootError">{error}</div> : null}</>;
