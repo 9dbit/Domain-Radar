@@ -65,14 +65,17 @@ function enrichNodeForUi(node) {
   const batteryLabel = hasBattery ? `${node.battery_percent}%` : "n/a";
   const chargingLabel = node.is_charging === null || node.is_charging === undefined ? "n/a" : node.is_charging ? "Yes" : "No";
   const lastSeenLabel = node.telemetry_last_seen_at ? new Date(node.telemetry_last_seen_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "never";
+  const signalLabel = node.signal_label || "n/a";
+  const iconLine = `${originalNetworkType} · 📶 Signal ${signalLabel} · 🔋 ${batteryLabel} · ⚡ ${chargingLabel}`;
   return {
     ...node,
     raw_provider_name: originalProviderName,
     raw_network_type: originalNetworkType,
     provider_name: originalProviderName,
-    network_type: `${originalNetworkType} · Battery ${batteryLabel} · Charging ${chargingLabel}`,
+    network_type: iconLine,
     battery_label: batteryLabel,
     charging_label: chargingLabel,
+    signal_label: signalLabel,
     last_seen_label: lastSeenLabel
   };
 }
