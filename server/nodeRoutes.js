@@ -22,10 +22,31 @@ async function ensureNodeTable() {
 }
 
 function cleanBase(url) {
-  return String(url || "").trim().replace(/\/+$/, "");
+  const raw = String(url || "").trim();
+  if (raw.toLowerCase().startsWith("poll://")) return raw.replace(/\/+$/, "");
+  return raw.replace(/\/+$/, "");
+}
+
+function defaultSecret(name) {
+  return `${String(name || "node").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-secret-001`;
+}
+
+function pollingPresets() {
+  return [
+    { name: "TELKOMSEL-JKT-01", provider_name: "Telkomsel", network_type: "mobile" },
+    { name: "XL-JKT-01", provider_name: "XL", network_type: "mobile" },
+    { name: "INDOSAT-JKT-01", provider_name: "Indosat", network_type: "mobile" },
+    { name: "TRI-JKT-01", provider_name: "Tri", network_type: "mobile" },
+    { name: "SMARTFREN-JKT-01", provider_name: "Smartfren", network_type: "mobile" },
+    { name: "BIZNET-JKT-01", provider_name: "Biznet", network_type: "broadband" },
+    { name: "INDIHOME-JKT-01", provider_name: "IndiHome", network_type: "broadband" }
+  ].map((n) => ({ ...n, endpoint_url: `poll://${n.name}`, secret_key: defaultSecret(n.name) }));
 }
 
 async function pingNode(node) {
+  if (String(node.endpoint_url || "").toLowerCase().startsWith("poll://")) {
+    return { ok: true, mode: "polling", data: { ok: true, message: "Polling node waits for device agent heartbeat", node_name: node.name } };
+  }
   const started = Date.now();
   const url = `${cleanBase(node.endpoint_url)}/health`;
   const { data } = await axios.get(url, {
@@ -40,6 +61,30 @@ router.get("/", async (req, res, next) => {
     await ensureNodeTable();
     const { rows } = await pool.query("SELECT * FROM provider_nodes ORDER BY id DESC");
     res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/presets", async (req, res) => {
+  res.json(pollingPresets());
+});
+
+router.post("/presets", async (req, res, next) => {
+  try {
+    await ensureNodeTable();
+    const inserted = [];
+    for (const node of pollingPresets()) {
+      const { rows } = await pool.query(
+        `INSERT INTO provider_nodes (name, provider_name, network_type, endpoint_url, secret_key)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (name) DO UPDATE SET provider_name=EXCLUDED.provider_name, network_type=EXCLUDED.network_type, endpoint_url=EXCLUDED.endpoint_url, secret_key=EXCLUDED.secret_key
+         RETURNING *`,
+        [node.name, node.provider_name, node.network_type, node.endpoint_url, node.secret_key]
+      );
+      inserted.push(rows[0]);
+    }
+    res.json({ ok: true, count: inserted.length, nodes: inserted });
   } catch (err) {
     next(err);
   }
@@ -76,7 +121,8 @@ router.post("/:id/ping", async (req, res, next) => {
 
     try {
       const result = await pingNode(rows[0]);
-      await pool.query("UPDATE provider_nodes SET last_health_status='online', last_ping_at=NOW() WHERE id=$1", [req.params.id]);
+      const health = result.mode === "polling" ? "waiting" : "online";
+      await pool.query("UPDATE provider_nodes SET last_health_status=$1, last_ping_at=NOW() WHERE id=$2", [health, req.params.id]);
       res.json(result);
     } catch (err) {
       await pool.query("UPDATE provider_nodes SET last_health_status='offline', last_ping_at=NOW() WHERE id=$1", [req.params.id]);
@@ -111,4 +157,4 @@ router.delete("/:id", async (req, res, next) => {
   }
 });
 
-module.exports = { router, ensureNodeTable, pingNode, cleanBase };
+module.exports = { router, ensureNodeTable, pingNode, cleanBase, pollingPresets };
