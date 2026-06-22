@@ -4,6 +4,42 @@
     <meta charset="UTF-8" />
     <title>Domain Radar</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      .badge.working {
+        font-size: 0 !important;
+      }
+      .badge.working::after {
+        content: "NORMAL";
+        font-size: 9.5px !important;
+        font-weight: 1000;
+        letter-spacing: .03em;
+      }
+      .cards .card:nth-child(2) span {
+        font-size: 0 !important;
+      }
+      .cards .card:nth-child(2) span::after {
+        content: "NORMAL";
+        font-size: 11px !important;
+        color: var(--muted);
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+      }
+      .batteryGauge,
+      .signalGauge {
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        padding: 3px 0 !important;
+        min-height: 40px !important;
+      }
+      .signalBars span {
+        border: 0 !important;
+      }
+      .nodeTelemetryRow {
+        gap: 4px !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
