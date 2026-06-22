@@ -45,18 +45,7 @@ async function getKeywordGroup(id) {
   const domains = (await pool.query("SELECT * FROM rank_keyword_domains WHERE group_id=$1 ORDER BY id ASC", [id])).rows;
   const best = domains.filter((d) => d.last_position).sort((a, b) => a.last_position - b.last_position)[0] || null;
   const suspicious = (await pool.query("SELECT COUNT(*)::int AS count FROM rank_scan_results WHERE group_id=$1 AND classification='suspicious' AND checked_at > NOW() - INTERVAL '7 days'", [id])).rows[0]?.count || 0;
-  return {
-    ...group,
-    domains,
-    domain_count: domains.length,
-    suspicious_count: suspicious,
-    domain: domains.map((d) => d.domain).join(", "),
-    last_position: best?.last_position || null,
-    last_page: best?.last_page || null,
-    last_matched_url: best?.last_matched_url || "",
-    last_status: best ? "found" : (domains.length ? "not_found" : "pending"),
-    best_domain: best?.domain || ""
-  };
+  return { ...group, domains, domain_count: domains.length, suspicious_count: suspicious, domain: domains.map((d) => d.domain).join(", "), last_position: best?.last_position || null, last_page: best?.last_page || null, last_matched_url: best?.last_matched_url || "", last_status: best ? "found" : (domains.length ? "not_found" : "pending"), best_domain: best?.domain || "" };
 }
 
 async function upsertKeywordGroup({ project, keyword, domains, targetUrl }) {
@@ -71,7 +60,34 @@ async function upsertKeywordGroup({ project, keyword, domains, targetUrl }) {
   return getKeywordGroup(group.id);
 }
 
-async function fetchGoogleResults(keyword) {
+function normalizeSerpItem(item, position, keyword) {
+  return { title: item.title || "", link: item.link || "", snippet: item.snippet || "", position, page: Math.ceil(position / 10), keyword };
+}
+
+async function fetchSerperResults(keyword) {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) throw new Error("SERPER_API_KEY is missing");
+  const maxPages = Math.min(10, Math.max(1, Number(process.env.RANK_MAX_PAGES || 10)));
+  const all = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const { data } = await axios.post("https://google.serper.dev/search", {
+      q: keyword,
+      gl: process.env.RANK_SERPER_GL || "id",
+      hl: process.env.RANK_SERPER_HL || "id",
+      num: 10,
+      page
+    }, {
+      timeout: 25000,
+      headers: { "X-API-KEY": key, "Content-Type": "application/json" }
+    });
+    const organic = Array.isArray(data.organic) ? data.organic : [];
+    organic.forEach((item, i) => all.push(normalizeSerpItem(item, (page - 1) * 10 + i + 1, keyword)));
+    if (organic.length < 10) break;
+  }
+  return all.slice(0, 100);
+}
+
+async function fetchCustomSearchResults(keyword) {
   const key = process.env.GOOGLE_SEARCH_API_KEY;
   const cx = process.env.GOOGLE_SEARCH_CX;
   if (!key || !cx) throw new Error("Missing GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX");
@@ -81,10 +97,15 @@ async function fetchGoogleResults(keyword) {
     const start = page * 10 + 1;
     const { data } = await axios.get("https://www.googleapis.com/customsearch/v1", { timeout: 25000, params: { key, cx, q: keyword, start, num: 10 } });
     const items = Array.isArray(data.items) ? data.items : [];
-    items.forEach((item, i) => all.push({ ...item, position: start + i, page: Math.ceil((start + i) / 10), keyword }));
+    items.forEach((item, i) => all.push({ title: item.title || "", link: item.link || "", snippet: item.snippet || "", position: start + i, page: Math.ceil((start + i) / 10), keyword }));
     if (items.length < 10) break;
   }
   return all.slice(0, 100);
+}
+
+async function fetchGoogleResults(keyword) {
+  if (process.env.SERPER_API_KEY) return fetchSerperResults(keyword);
+  return fetchCustomSearchResults(keyword);
 }
 
 async function lookupDomainIntel(domain) {
@@ -138,7 +159,7 @@ async function checkGroup(group) {
   for (const d of domains) {
     const match = items.find((item) => domainMatches(item.link || "", d.domain));
     await pool.query(`UPDATE rank_keyword_domains SET last_position=$1, last_page=$2, last_matched_url=$3, last_status=$4, last_checked_at=NOW() WHERE id=$5`, [match?.position || null, match?.page || null, match?.link || "", match ? "found" : "not_found", d.id]);
-    await pool.query(`INSERT INTO rank_results (keyword_id, keyword, domain, position, page, matched_url) VALUES ($1,$2,$3,$4,$5,$6)`, [d.id, group.keyword, d.domain, match?.position || null, match?.page || null, match?.link || ""]).catch(() => {});
+    await pool.query(`INSERT INTO rank_results (keyword_id, keyword, domain, position, page, matched_url, source) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [d.id, group.keyword, d.domain, match?.position || null, match?.page || null, match?.link || "", process.env.SERPER_API_KEY ? "serper" : "google_custom_search"]).catch(() => {});
   }
   for (const s of suspicious.slice(0, 25)) {
     const seen = await pool.query(`INSERT INTO rank_suspicious_seen (group_id, host, last_position, last_page) VALUES ($1,$2,$3,$4) ON CONFLICT (group_id, host) DO UPDATE SET last_seen_at=NOW(), last_position=EXCLUDED.last_position, last_page=EXCLUDED.last_page RETURNING (xmax = 0) AS is_new`, [group.id, s.host, s.position, s.page]);
@@ -146,7 +167,7 @@ async function checkGroup(group) {
     if (seen.rows[0]?.is_new && s.position <= Number(process.env.RANK_SUSPICIOUS_ALERT_MAX_POSITION || 30)) await sendTelegram(`SUSPICIOUS GOOGLE RESULT\n\nKeyword: ${group.keyword}\nHost: ${s.host}\nRank: ${s.position}\nPage: ${s.page}\nURL: ${s.link}\nReason: ${s.reason}\nReport: ${s.intel?.report_url || "n/a"}`).catch(() => false);
   }
   await pool.query("UPDATE rank_keyword_groups SET last_checked_at=NOW() WHERE id=$1", [group.id]);
-  return { total_results: items.length, suspicious_count: suspicious.length, suspicious };
+  return { provider: process.env.SERPER_API_KEY ? "serper" : "google_custom_search", total_results: items.length, suspicious_count: suspicious.length, suspicious };
 }
 
 router.get("/keywords", async (req, res, next) => { try { await ensureRankTables(); const groups = (await pool.query("SELECT * FROM rank_keyword_groups ORDER BY id DESC")).rows; const out = []; for (const g of groups) out.push(await getKeywordGroup(g.id)); res.json(out.filter(Boolean)); } catch (err) { next(err); } });
@@ -154,6 +175,7 @@ router.post("/keywords", async (req, res, next) => { try { await ensureRankTable
 router.delete("/keywords/:id", async (req, res, next) => { try { await ensureRankTables(); await pool.query("DELETE FROM rank_keyword_groups WHERE id=$1", [req.params.id]); await pool.query("DELETE FROM rank_keywords WHERE id=$1", [req.params.id]).catch(() => {}); res.json({ ok: true }); } catch (err) { next(err); } });
 router.get("/results", async (req, res, next) => { try { await ensureRankTables(); const { rows } = await pool.query("SELECT id, group_id, keyword, host AS domain, position, page, link AS matched_url, title, snippet, classification, reason, checked_at FROM rank_scan_results ORDER BY checked_at DESC, position ASC LIMIT 1000"); res.json(rows); } catch (err) { next(err); } });
 router.get("/intel/:domain", async (req, res, next) => { try { await ensureRankTables(); res.json(await lookupDomainIntel(req.params.domain)); } catch (err) { next(err); } });
+router.get("/test", async (req, res, next) => { try { const keyword = String(req.query.q || "empire88"); const items = await fetchGoogleResults(keyword); res.json({ ok: true, provider: process.env.SERPER_API_KEY ? "serper" : "google_custom_search", keyword, count: items.length, first: items[0] || null }); } catch (err) { next(err); } });
 router.post("/check/:id", async (req, res, next) => { try { await ensureRankTables(); const group = await getKeywordGroup(req.params.id); if (!group) return res.status(404).json({ error: "Keyword group not found" }); const result = await checkGroup(group); res.json({ ok: true, ...result, group: await getKeywordGroup(req.params.id) }); } catch (err) { next(err); } });
 router.post("/check-all", async (req, res, next) => { try { await ensureRankTables(); const { rows } = await pool.query("SELECT * FROM rank_keyword_groups WHERE is_active=true ORDER BY id DESC LIMIT 50"); const checked = []; for (const group of rows) { try { checked.push({ id: group.id, keyword: group.keyword, ...(await checkGroup(group)) }); } catch (err) { checked.push({ id: group.id, keyword: group.keyword, error: err.message }); } } res.json({ ok: true, checked }); } catch (err) { next(err); } });
 
