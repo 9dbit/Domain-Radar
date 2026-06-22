@@ -51,13 +51,13 @@ async function waitForNodeTask(taskId, timeoutMs = 45000) {
   while (Date.now() - started < timeoutMs) {
     const { rows } = await pool.query("SELECT * FROM provider_node_tasks WHERE id=$1", [taskId]);
     const task = rows[0];
-    if (!task) return { status: "warning", reason: "Polling task disappeared" };
-    if (task.status === "done") return task.result || { status: "warning", reason: "Polling task returned empty result" };
-    if (task.status === "error") return { status: "warning", reason: task.error || "Polling task error" };
+    if (!task) return { status: "warning", reason: "Polling task disappeared", __polling_state: "error" };
+    if (task.status === "done") return task.result || { status: "warning", reason: "Polling task returned empty result", __polling_state: "error" };
+    if (task.status === "error") return { status: "warning", reason: task.error || "Polling task error", __polling_state: "error" };
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   await pool.query("UPDATE provider_node_tasks SET status='error', error='Node polling timeout' WHERE id=$1 AND status <> 'done'", [taskId]);
-  return { status: "warning", reason: "Node polling timeout / no response from device" };
+  return { status: "warning", reason: "Node polling timeout / no response from device", __polling_state: "timeout" };
 }
 
 router.post("/poll", async (req, res, next) => {
