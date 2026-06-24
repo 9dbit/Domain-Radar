@@ -12,6 +12,8 @@ const PROVIDER_NAME = process.env.PROVIDER_NAME || NODE_NAME;
 const NETWORK_TYPE = process.env.NETWORK_TYPE || "mobile";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 3000);
 const STATUS_KEYWORDS = (process.env.STATUS_KEYWORDS || "internetpositif,trustpositif,nawala").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+const EXPECTED_ORG = String(process.env.EXPECTED_ORG || "").toLowerCase().trim();
+const IPINFO_URL = process.env.IPINFO_URL || "https://ipinfo.io/json";
 
 if (!CENTRAL_URL || !NODE_NAME || !AGENT_SECRET) {
   console.error("CENTRAL_URL, NODE_NAME, and AGENT_SECRET are required");
@@ -105,6 +107,18 @@ function detectSignal(text, finalUrl) {
   return { matched: false, reason: "" };
 }
 
+async function getPublicNetworkInfo() {
+  if (!EXPECTED_ORG) return { ok: true, reason: "no expected org configured", data: null };
+  try {
+    const { data } = await axios.get(IPINFO_URL, { timeout: 8000 });
+    const org = String(data?.org || "").toLowerCase();
+    const ok = org.includes(EXPECTED_ORG);
+    return { ok, reason: ok ? "network matched" : `wrong network: ${data?.org || "unknown org"}`, data };
+  } catch (err) {
+    return { ok: false, reason: `network check failed: ${err.code || err.message}`, data: null };
+  }
+}
+
 async function checkDomain(domain) {
   const cleanDomain = normalizeDomain(domain);
   const started = Date.now();
@@ -147,7 +161,21 @@ async function checkDomain(domain) {
 
 async function pollOnce() {
   const telemetry = getBatteryTelemetry();
-  const { data } = await axios.post(`${CENTRAL_URL}/api/agent/poll`, { node_name: NODE_NAME, secret_key: AGENT_SECRET, telemetry }, { timeout: 30000 });
+  const net = await getPublicNetworkInfo();
+
+  if (!net.ok) {
+    await axios.post(`${CENTRAL_URL}/api/agent/poll`, {
+      node_name: NODE_NAME,
+      secret_key: AGENT_SECRET,
+      telemetry,
+      network_ok: false,
+      network_reason: net.reason
+    }, { timeout: 30000 });
+    console.log(`[${new Date().toISOString()}] Waiting: ${net.reason}`);
+    return;
+  }
+
+  const { data } = await axios.post(`${CENTRAL_URL}/api/agent/poll`, { node_name: NODE_NAME, secret_key: AGENT_SECRET, telemetry, network_ok: true }, { timeout: 30000 });
   if (!data.task) return;
   const { id, domain } = data.task;
   console.log(`[${new Date().toISOString()}] Task ${id}: ${domain}`);
@@ -162,6 +190,7 @@ async function loop() {
   console.log(`Node: ${NODE_NAME}`);
   console.log(`Provider: ${PROVIDER_NAME}`);
   console.log(`Network: ${NETWORK_TYPE}`);
+  console.log(`Expected org: ${EXPECTED_ORG || "not configured"}`);
   console.log(`Battery telemetry: ${JSON.stringify(getBatteryTelemetry())}`);
   while (true) {
     try { await pollOnce(); } catch (err) { console.error(`[${new Date().toISOString()}] Poll error: ${err.response?.data?.error || err.code || err.message}`); }
