@@ -5,9 +5,12 @@ const { sendTelegram } = require("./telegram");
 const { decide } = require("./confirm");
 const { getRuntimeSettings } = require("./runtimeSettings");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
-const { buildDigest } = require("./telegramDigest");
 
 let running = false;
+
+const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
+const DIGEST_INTERVAL_MINUTES = Number(process.env.DIGEST_INTERVAL_MINUTES || 60);
+const DIGEST_LIMIT = Number(process.env.TELEGRAM_DIGEST_LIMIT || 120);
 
 function getRetryLimit() {
   const value = Number(getRuntimeSettings().retry_confirmations || 3);
@@ -19,6 +22,149 @@ function getCronExpr() {
   return interval <= 60 ? "* * * * *" : `*/${Math.ceil(interval / 60)} * * * *`;
 }
 
+function nowWib() {
+  return new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+}
+
+function normalizeStatus(status) {
+  const value = String(status || "unknown").toLowerCase().trim();
+  if (["normal", "ok", "online", "success"].includes(value)) return "working";
+  if (["warn", "warning", "timeout", "error"].includes(value)) return "warning";
+  if (["block", "blocked", "down", "offline"].includes(value)) return "blocked";
+  return value || "unknown";
+}
+
+function isNodeTimeout(result) {
+  const text = String(result?.reason || "").toLowerCase();
+  return text.includes("node polling timeout") || text.includes("no response from device");
+}
+
+function isImportantTransition(oldStatus, newStatus, worst) {
+  const oldValue = normalizeStatus(oldStatus);
+  const newValue = normalizeStatus(newStatus);
+
+  if (oldValue === newValue) return false;
+  if (isNodeTimeout(worst)) return false;
+
+  if (oldValue === "working" && newValue === "warning") return true;
+  if (["working", "warning", "unknown"].includes(oldValue) && newValue === "blocked") return true;
+
+  return false;
+}
+
+async function sentRecently(domainId, newStatus) {
+  const { rows } = await pool.query(
+    `SELECT id
+     FROM alerts
+     WHERE domain_id=$1
+       AND new_status=$2
+       AND sent_to_telegram=true
+       AND created_at > NOW() - ($3::text || ' minutes')::interval
+     LIMIT 1`,
+    [domainId, newStatus, String(ALERT_COOLDOWN_MINUTES)]
+  );
+
+  return Boolean(rows[0]);
+}
+
+async function ensureDigestTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS telegram_digest_state (
+      key TEXT PRIMARY KEY,
+      last_sent_at TIMESTAMP
+    )
+  `);
+}
+
+async function latestFinalUrlMap() {
+  const { rows } = await pool.query(`
+    SELECT DISTINCT ON (domain_id) domain_id, final_url
+    FROM check_results
+    WHERE COALESCE(final_url, '') <> ''
+    ORDER BY domain_id, checked_at DESC
+  `);
+
+  const map = new Map();
+  for (const row of rows) map.set(row.domain_id, row.final_url || "");
+  return map;
+}
+
+function iconFor(status, finalUrl = "") {
+  const value = normalizeStatus(status);
+  if (value === "working") return "✅";
+  if (value === "warning") return "⚠️";
+  if (value === "blocked" && finalUrl) return "➡️";
+  if (value === "blocked") return "❗";
+  return "•";
+}
+
+function formatDomainList(title, rows, finalUrlMap) {
+  if (!rows.length) return `${title}\n-`;
+
+  const lines = rows.slice(0, DIGEST_LIMIT).map((row) => {
+    const finalUrl = finalUrlMap.get(row.id) || "";
+    const redirect = normalizeStatus(row.global_status) === "blocked" && finalUrl ? ` → ${finalUrl}` : "";
+    return `${iconFor(row.global_status, finalUrl)} ${row.domain}${redirect}`;
+  });
+
+  if (rows.length > DIGEST_LIMIT) {
+    lines.push(`...and ${rows.length - DIGEST_LIMIT} more`);
+  }
+
+  return `${title}\n${lines.join("\n")}`;
+}
+
+async function sendHourlyDigestIfDue() {
+  await ensureDigestTable();
+
+  const { rows: state } = await pool.query(
+    "SELECT last_sent_at FROM telegram_digest_state WHERE key='hourly_status_report' LIMIT 1"
+  );
+
+  const lastSentAt = state[0]?.last_sent_at ? new Date(state[0].last_sent_at).getTime() : 0;
+  const intervalMs = DIGEST_INTERVAL_MINUTES * 60 * 1000;
+
+  if (lastSentAt && Date.now() - lastSentAt < intervalMs) return;
+
+  const { rows: domains } = await pool.query(
+    "SELECT id, domain, global_status FROM domains WHERE is_active=true ORDER BY domain ASC"
+  );
+
+  const finalUrlMap = await latestFinalUrlMap();
+
+  const normal = domains.filter((d) => normalizeStatus(d.global_status) === "working");
+  const warning = domains.filter((d) => normalizeStatus(d.global_status) === "warning");
+  const blocked = domains.filter((d) => normalizeStatus(d.global_status) === "blocked");
+  const redirected = blocked.filter((d) => finalUrlMap.get(d.id));
+
+  const message = [
+    "DOMAIN RADAR HOURLY REPORT",
+    "",
+    `Time: ${nowWib()} WIB`,
+    `Total: ${domains.length}`,
+    `✅ Normal: ${normal.length}`,
+    `⚠️ Warning: ${warning.length}`,
+    `❗ Blocked: ${blocked.length - redirected.length}`,
+    `➡️ Blocked + redirected: ${redirected.length}`,
+    "",
+    formatDomainList("NORMAL", normal, finalUrlMap),
+    "",
+    formatDomainList("WARNING", warning, finalUrlMap),
+    "",
+    formatDomainList("BLOCKED / REDIRECTED", blocked, finalUrlMap)
+  ].join("\n");
+
+  const sent = await sendTelegram(message);
+
+  if (sent) {
+    await pool.query(`
+      INSERT INTO telegram_digest_state (key, last_sent_at)
+      VALUES ('hourly_status_report', NOW())
+      ON CONFLICT (key) DO UPDATE SET last_sent_at=NOW()
+    `);
+  }
+}
+
 async function runChecks() {
   if (running) return;
   running = true;
@@ -28,7 +174,6 @@ async function runChecks() {
     const { rows: domains } = await pool.query("SELECT * FROM domains WHERE is_active = TRUE ORDER BY id ASC");
     const { rows: proxies } = await pool.query("SELECT * FROM proxies WHERE is_active = TRUE ORDER BY id ASC");
     const nodes = await getActiveNodes();
-    buildDigest([]);
 
     for (const domain of domains) {
       const results = [];
@@ -48,14 +193,17 @@ async function runChecks() {
 
       for (const r of results) {
         await pool.query(
-          `INSERT INTO check_results 
+          `INSERT INTO check_results
           (domain_id, checker_type, provider_name, status, http_status, final_url, dns_result, latency_ms, reason)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [domain.id, r.checker_type, r.provider_name, r.status, r.http_status, r.final_url, r.dns_result, r.latency_ms, r.reason]
         );
       }
 
-      const newStatus = calculateGlobalStatus(results);
+      const domainResults = results.filter((r) => !isNodeTimeout(r));
+      const effectiveResults = domainResults.length ? domainResults : results;
+
+      const newStatus = calculateGlobalStatus(effectiveResults);
       const oldStatus = domain.global_status || "unknown";
       const decision = decide(domain.id, oldStatus, newStatus, retryLimit);
 
@@ -73,19 +221,37 @@ async function runChecks() {
       );
 
       if (oldStatus !== newStatus) {
-        const B = ["blo", "cked"].join("");
-        const W = ["warn", "ing"].join("");
-        const worst = results.find(r => r.status === B) || results.find(r => r.status === W) || results[0];
-        const icon = newStatus === B ? "ALERT" : newStatus === W ? "WARNING" : "RECOVERED";
-        const message = `${icon} STATUS CHANGE CONFIRMED\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nConfirmed: ${retryLimit} checks\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`;
+        const worst =
+          effectiveResults.find((r) => r.status === "blocked") ||
+          effectiveResults.find((r) => r.status === "warning") ||
+          effectiveResults[0];
 
-        const sent = await sendTelegram(message);
+        let sent = false;
+        let message = `SILENT STATUS CHANGE\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nTime: ${nowWib()} WIB`;
+
+        if (isImportantTransition(oldStatus, newStatus, worst) && !(await sentRecently(domain.id, newStatus))) {
+          const icon = iconFor(newStatus, worst.final_url);
+          const title = normalizeStatus(newStatus) === "blocked"
+            ? `${icon} BLOCKED STATUS CHANGE CONFIRMED`
+            : `${icon} WARNING STATUS CHANGE CONFIRMED`;
+
+          const redirectLine = normalizeStatus(newStatus) === "blocked" && worst.final_url
+            ? `\nRedirected: ➡️ ${worst.final_url}`
+            : "";
+
+          message = `${title}\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nConfirmed: ${retryLimit} checks\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}${redirectLine}\nTime: ${nowWib()} WIB`;
+
+          sent = await sendTelegram(message);
+        }
+
         await pool.query(
           "INSERT INTO alerts (domain_id, old_status, new_status, message, sent_to_telegram) VALUES ($1,$2,$3,$4,$5)",
           [domain.id, oldStatus, newStatus, message, sent]
         );
       }
     }
+
+    await sendHourlyDigestIfDue();
   } catch (err) {
     console.error("Scheduler error:", err);
   } finally {
