@@ -159,6 +159,13 @@ router.post("/poll", async (req, res, next) => {
     const node = await findNode(req.body.node_name, req.body.secret_key);
     if (!node) return res.status(401).json({ error: "Invalid node credentials" });
 
+    if (req.body.network_ok === false) {
+      const reason = String(req.body.network_reason || "wrong network").slice(0, 200);
+      await pool.query("UPDATE provider_nodes SET last_health_status='waiting', last_ping_at=NOW() WHERE id=$1", [node.id]);
+      await upsertTelemetry(node, req.body.telemetry || {}, req);
+      return res.json({ ok: true, task: null, waiting: true, reason });
+    }
+
     await pool.query("UPDATE provider_nodes SET last_health_status='online', last_ping_at=NOW() WHERE id=$1", [node.id]);
     await upsertTelemetry(node, req.body.telemetry || {}, req);
 
