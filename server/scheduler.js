@@ -5,6 +5,7 @@ const { sendTelegram } = require("./telegram");
 const { decide } = require("./confirm");
 const { getRuntimeSettings } = require("./runtimeSettings");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
+const { buildDigest } = require("./telegramDigest");
 
 let running = false;
 
@@ -27,6 +28,7 @@ async function runChecks() {
     const { rows: domains } = await pool.query("SELECT * FROM domains WHERE is_active = TRUE ORDER BY id ASC");
     const { rows: proxies } = await pool.query("SELECT * FROM proxies WHERE is_active = TRUE ORDER BY id ASC");
     const nodes = await getActiveNodes();
+    buildDigest([]);
 
     for (const domain of domains) {
       const results = [];
