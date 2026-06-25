@@ -1,4 +1,6 @@
 const axios = require("axios");
+const { HttpsProxyAgent } = require("https-proxy-agent");
+const { SocksProxyAgent } = require("socks-proxy-agent");
 
 const DEFAULT_BASE_URL = "https://trustpositif.komdigi.go.id";
 
@@ -58,6 +60,13 @@ function buildWelcomeUrl(baseUrl, token, domain) {
   return `${baseUrl}/welcome?${params.toString()}`;
 }
 
+function buildProxyAgent() {
+  const proxyUrl = process.env.PROVIDER_BLOCK_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "";
+  if (!proxyUrl) return null;
+  if (/^socks/i.test(proxyUrl)) return new SocksProxyAgent(proxyUrl);
+  return new HttpsProxyAgent(proxyUrl);
+}
+
 async function requestWithFallback(client, baseUrl, clean, cookie, token) {
   const referer = `${baseUrl}/index.php`;
   const commonHeaders = { Cookie: cookie, Referer: referer };
@@ -107,7 +116,8 @@ async function verifyProviderBlock(domain) {
   }
 
   try {
-    const client = axios.create({
+    const agent = buildProxyAgent();
+    const clientConfig = {
       timeout,
       maxRedirects: 8,
       validateStatus: () => true,
@@ -116,8 +126,15 @@ async function verifyProviderBlock(domain) {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
       }
-    });
+    };
 
+    if (agent) {
+      clientConfig.httpAgent = agent;
+      clientConfig.httpsAgent = agent;
+      clientConfig.proxy = false;
+    }
+
+    const client = axios.create(clientConfig);
     const home = await client.get(`${baseUrl}/index.php`);
     const cookie = cookieHeader(home.headers || {});
     const token = findToken(home.data || "");
