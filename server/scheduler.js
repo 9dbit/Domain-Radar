@@ -7,6 +7,7 @@ const { getRuntimeSettings } = require("./runtimeSettings");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { classifyReasonType, reasonTypeLabel } = require("./reasonClassifier");
 const { verifyProviderBlock } = require("./providerBlockVerifier");
+const { isAcknowledged, clearAcknowledged } = require("./noticeState");
 
 let running = false;
 let reasonTypeColumnReady = false;
@@ -241,7 +242,16 @@ async function sendHourlyDigestIfDue() {
     formatDomainList("BLOCKED / REDIRECTED", blocked, finalUrlMap)
   ].join("\n");
 
-  const sent = await sendTelegram(message);
+  const const telegramExtra = normalizeStatus(newStatus) === "blocked"
+            ? {
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: "✅ Noticed", callback_data: `noticed:${domain.id}:blocked` }
+                  ]]
+                }
+              }
+            : {};
+          sent = await sendTelegram(message, telegramExtra);
 
   if (sent) {
     await pool.query(`
@@ -296,6 +306,11 @@ async function runChecks() {
 
       const newStatus = calculateGlobalStatus(effectiveResults);
       const oldStatus = domain.global_status || "unknown";
+
+      if (normalizeStatus(newStatus) !== "blocked") {
+        await clearAcknowledged(domain.id);
+      }
+
       const decision = decide(domain.id, oldStatus, newStatus, retryLimit);
 
       if (!decision.apply) {
@@ -320,7 +335,7 @@ async function runChecks() {
         let sent = false;
         let message = `SILENT STATUS CHANGE\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nChecker: ${worst.provider_name}\nReason Type: ${reasonTypeLabel(classifyReasonType(worst))}\nReason: ${worst.reason}\nTime: ${nowWib()} WIB`;
 
-        if (isImportantTransition(oldStatus, newStatus, worst) && !(await sentRecently(domain.id, newStatus))) {
+        if (isImportantTransition(oldStatus, newStatus, worst) && !(await sentRecently(domain.id, newStatus)) && !(normalizeStatus(newStatus) === "blocked" && await isAcknowledged(domain.id))) {
           const icon = iconFor(newStatus, worst.final_url);
           const title = normalizeStatus(newStatus) === "blocked"
             ? `${icon} BLOCKED STATUS CHANGE CONFIRMED`

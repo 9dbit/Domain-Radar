@@ -15,7 +15,8 @@ const { router: nodeRoutes } = require("./nodeRoutes");
 const { router: agentPollRoutes } = require("./agentPollRoutes");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { loadSettings } = require("./settingsStore");
-const { sendTelegram } = require("./telegram");
+const { sendTelegram, answerCallbackQuery, editMessageReplyMarkup } = require("./telegram");
+const { markAcknowledged } = require("./noticeState");
 
 const app = express();
 const sessionSecret = process.env.SESSION_SECRET || "domain-radar-dev-session-secret";
@@ -62,6 +63,40 @@ app.use("/api/settings", requireAdmin, settingsRoutes);
 app.use("/api/projects", requireAdmin, projectRoutes);
 app.use("/api/rank", requireAdmin, rankRoutes);
 app.use("/api/nodes", requireAdmin, nodeRoutes);
+
+app.post("/api/telegram/webhook", async (req, res) => {
+  try {
+    const callback = req.body && req.body.callback_query;
+    if (!callback || !callback.data) return res.json({ ok: true });
+
+    const parts = String(callback.data).split(":");
+    if (parts[0] !== "noticed") return res.json({ ok: true });
+
+    const domainId = Number(parts[1]);
+    const status = parts[2] || "blocked";
+    if (!Number.isFinite(domainId) || status !== "blocked") {
+      await answerCallbackQuery(callback.id, "Invalid notice");
+      return res.json({ ok: true });
+    }
+
+    await markAcknowledged(domainId, callback.from || {});
+    await answerCallbackQuery(callback.id, "Noticed. Blocked alert acknowledged.");
+
+    const chatId = callback.message?.chat?.id;
+    const messageId = callback.message?.message_id;
+    if (chatId && messageId) {
+      await editMessageReplyMarkup(chatId, messageId, {
+        inline_keyboard: [[{ text: "✅ Noticed", callback_data: "noticed_done" }]]
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Telegram webhook error:", err);
+    res.json({ ok: false });
+  }
+});
+
 app.post("/api/telegram/test", requireAdmin, async (req, res) => { const message = `DOMAIN RADAR TEST\n\nTelegram alert is working.\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`; const sent = await sendTelegram(message); res.json({ ok: sent }); });
 app.get("/api/overview", requireAdmin, async (req, res) => { const { rows } = await pool.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE global_status='working')::int AS working, COUNT(*) FILTER (WHERE global_status='warning')::int AS warning, COUNT(*) FILTER (WHERE global_status='blocked')::int AS blocked, MAX(last_checked_at) AS last_checked FROM domains`); res.json(rows[0]); });
 app.get("/api/alerts", requireAdmin, async (req, res) => { const { rows } = await pool.query(`SELECT a.*, d.domain, d.project_name FROM alerts a LEFT JOIN domains d ON d.id = a.domain_id ORDER BY a.created_at DESC LIMIT 100`); res.json(rows); });
