@@ -242,16 +242,7 @@ async function sendHourlyDigestIfDue() {
     formatDomainList("BLOCKED / REDIRECTED", blocked, finalUrlMap)
   ].join("\n");
 
-  const const telegramExtra = normalizeStatus(newStatus) === "blocked"
-            ? {
-                reply_markup: {
-                  inline_keyboard: [[
-                    { text: "✅ Noticed", callback_data: `noticed:${domain.id}:blocked` }
-                  ]]
-                }
-              }
-            : {};
-          sent = await sendTelegram(message, telegramExtra);
+  const sent = await sendTelegram(message);
 
   if (sent) {
     await pool.query(`
