@@ -14,6 +14,7 @@ let reasonTypeColumnReady = false;
 const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
 const DIGEST_INTERVAL_MINUTES = Number(process.env.DIGEST_INTERVAL_MINUTES || 60);
 const DIGEST_LIMIT = Number(process.env.TELEGRAM_DIGEST_LIMIT || 120);
+const TRUSTPOSITIF_ON_DIRECT_WARNING = String(process.env.TRUSTPOSITIF_ON_DIRECT_WARNING || "true").toLowerCase() !== "false";
 
 function getRetryLimit() {
   const value = Number(getRuntimeSettings().retry_confirmations || 3);
@@ -49,15 +50,48 @@ function hasProviderNodeWarning(results) {
   });
 }
 
+function hasDirectWarning(results) {
+  return results.some((r) => {
+    const checker = String(r.checker_type || "").toLowerCase();
+    return checker === "direct" && normalizeStatus(r.status) === "warning";
+  });
+}
+
+function shouldCheckProviderRegistry(domain, results) {
+  if (normalizeStatus(domain.global_status) === "blocked") {
+    return { check: false, reason: "domain already blocked" };
+  }
+
+  if (hasProviderNodeWarning(results)) {
+    return { check: true, reason: "provider node warning" };
+  }
+
+  if (TRUSTPOSITIF_ON_DIRECT_WARNING && hasDirectWarning(results)) {
+    return { check: true, reason: "direct warning" };
+  }
+
+  return { check: false, reason: "no provider-node/direct warning" };
+}
+
 async function maybeAddProviderRegistryResult(domain, results) {
-  if (!hasProviderNodeWarning(results)) return;
-  if (normalizeStatus(domain.global_status) === "blocked") return;
+  const decision = shouldCheckProviderRegistry(domain, results);
+  if (!decision.check) {
+    if (process.env.TRUSTPOSITIF_DEBUG === "true") {
+      console.log(`[TrustPositif] skip ${domain.domain}: ${decision.reason}`);
+    }
+    return;
+  }
 
   try {
+    console.log(`[TrustPositif] checking ${domain.domain}: ${decision.reason}`);
     const registry = await verifyProviderBlock(domain.domain);
-    if (!registry.checked) return;
 
-    results.push(registry.blocked
+    if (!registry.checked) {
+      console.log(`[TrustPositif] error ${domain.domain}: ${registry.reason || registry.status || "unchecked"}`);
+      return;
+    }
+
+    const result = registry.blocked
       ? {
           checker_type: "provider_registry",
           provider_name: "TrustPositif",
@@ -77,7 +111,10 @@ async function maybeAddProviderRegistryResult(domain, results) {
           dns_result: "",
           latency_ms: null,
           reason: "TrustPositif status Tidak Ada"
-        });
+        };
+
+    results.push(result);
+    console.log(`[TrustPositif] result ${domain.domain}: ${result.status} / ${result.reason}`);
   } catch (err) {
     console.error("Provider registry verification error:", domain.domain, err.message);
   }
