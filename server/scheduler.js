@@ -5,8 +5,10 @@ const { sendTelegram } = require("./telegram");
 const { decide } = require("./confirm");
 const { getRuntimeSettings } = require("./runtimeSettings");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
+const { classifyReasonType, reasonTypeLabel } = require("./reasonClassifier");
 
 let running = false;
+let reasonTypeColumnReady = false;
 
 const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
 const DIGEST_INTERVAL_MINUTES = Number(process.env.DIGEST_INTERVAL_MINUTES || 60);
@@ -50,6 +52,12 @@ function isImportantTransition(oldStatus, newStatus, worst) {
   if (["working", "warning", "unknown"].includes(oldValue) && newValue === "blocked") return true;
 
   return false;
+}
+
+async function ensureReasonTypeColumn() {
+  if (reasonTypeColumnReady) return;
+  await pool.query("ALTER TABLE check_results ADD COLUMN IF NOT EXISTS reason_type TEXT DEFAULT 'UNKNOWN'");
+  reasonTypeColumnReady = true;
 }
 
 async function sentRecently(domainId, newStatus) {
@@ -170,6 +178,8 @@ async function runChecks() {
   running = true;
 
   try {
+    await ensureReasonTypeColumn();
+
     const retryLimit = getRetryLimit();
     const { rows: domains } = await pool.query("SELECT * FROM domains WHERE is_active = TRUE ORDER BY id ASC");
     const { rows: proxies } = await pool.query("SELECT * FROM proxies WHERE is_active = TRUE ORDER BY id ASC");
@@ -194,9 +204,9 @@ async function runChecks() {
       for (const r of results) {
         await pool.query(
           `INSERT INTO check_results
-          (domain_id, checker_type, provider_name, status, http_status, final_url, dns_result, latency_ms, reason)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [domain.id, r.checker_type, r.provider_name, r.status, r.http_status, r.final_url, r.dns_result, r.latency_ms, r.reason]
+          (domain_id, checker_type, provider_name, status, http_status, final_url, dns_result, latency_ms, reason, reason_type)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [domain.id, r.checker_type, r.provider_name, r.status, r.http_status, r.final_url, r.dns_result, r.latency_ms, r.reason, classifyReasonType(r)]
         );
       }
 
@@ -227,7 +237,7 @@ async function runChecks() {
           effectiveResults[0];
 
         let sent = false;
-        let message = `SILENT STATUS CHANGE\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nTime: ${nowWib()} WIB`;
+        let message = `SILENT STATUS CHANGE\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nChecker: ${worst.provider_name}\nReason Type: ${reasonTypeLabel(classifyReasonType(worst))}\nReason: ${worst.reason}\nTime: ${nowWib()} WIB`;
 
         if (isImportantTransition(oldStatus, newStatus, worst) && !(await sentRecently(domain.id, newStatus))) {
           const icon = iconFor(newStatus, worst.final_url);
