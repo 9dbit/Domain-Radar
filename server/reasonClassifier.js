@@ -9,17 +9,17 @@ function classifyReasonType(result = {}) {
     return "BLOCKED_BY_PROVIDER";
   }
   if (reason.includes("block keyword detected")) return "BLOCKED_BY_PROVIDER";
+  if (reason.includes("node polling timeout") || reason.includes("no response from device") || reason.includes("wrong network")) return "NODE_ISSUE";
   if (reason.includes("dns not found") || reason.includes("does not resolve") || reason.includes("enotfound") || reason.includes("dns has no usable record") || reason.includes("temporary failure")) {
     return "DNS_ISSUE";
   }
-  if (reason.includes("ssl certificate") || reason.includes("certificate")) return "SSL_ISSUE";
+  if (reason.includes("ssl certificate") || reason.includes("certificate") || reason.includes("cert") || reason.includes("unable_to_get_issuer") || reason.includes("unable_to_verify") || reason.includes("eproto")) return "SSL_ISSUE";
   if (reason.includes("too many redirects") || reason.includes("err_fr_too_many_redirects")) return "REDIRECT_ISSUE";
-  if (reason.includes("timeout") || reason.includes("connection reset") || reason.includes("socket hang up") || reason.includes("network unreachable")) return "TIMEOUT";
-  if (reason.includes("node polling timeout") || reason.includes("no response from device") || reason.includes("wrong network")) return "NODE_ISSUE";
+  if (reason.includes("timeout") || reason.includes("connection reset") || reason.includes("socket hang up") || reason.includes("network unreachable") || reason.includes("econnreset") || reason.includes("etimedout")) return "TIMEOUT";
   if (http === 451) return "BLOCKED_BY_PROVIDER";
   if (http === 403 || http === 429) return "HTTP_BLOCK";
   if (http >= 500) return "HOSTING_ISSUE";
-  if (status === "working" || reason === "ok") return "NORMAL";
+  if (status === "working" || reason === "ok" || http === 200) return "NORMAL";
   if (status === "blocked") return "BLOCKED_BY_PROVIDER";
   if (status === "warning") return "TECHNICAL_WARNING";
 
