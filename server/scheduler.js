@@ -6,6 +6,7 @@ const { decide } = require("./confirm");
 const { getRuntimeSettings } = require("./runtimeSettings");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { classifyReasonType, reasonTypeLabel } = require("./reasonClassifier");
+const { verifyProviderBlock } = require("./providerBlockVerifier");
 
 let running = false;
 let reasonTypeColumnReady = false;
@@ -39,6 +40,47 @@ function normalizeStatus(status) {
 function isNodeTimeout(result) {
   const text = String(result?.reason || "").toLowerCase();
   return text.includes("node polling timeout") || text.includes("no response from device");
+}
+
+function hasProviderNodeWarning(results) {
+  return results.some((r) => {
+    const checker = String(r.checker_type || "").toLowerCase();
+    return checker.includes("node") && normalizeStatus(r.status) === "warning" && !isNodeTimeout(r);
+  });
+}
+
+async function maybeAddProviderRegistryResult(domain, results) {
+  if (!hasProviderNodeWarning(results)) return;
+  if (normalizeStatus(domain.global_status) === "blocked") return;
+
+  try {
+    const registry = await verifyProviderBlock(domain.domain);
+    if (!registry.checked) return;
+
+    results.push(registry.blocked
+      ? {
+          checker_type: "provider_registry",
+          provider_name: "TrustPositif",
+          status: "blocked",
+          http_status: 451,
+          final_url: "",
+          dns_result: "",
+          latency_ms: null,
+          reason: "TrustPositif status Ada"
+        }
+      : {
+          checker_type: "provider_registry",
+          provider_name: "TrustPositif",
+          status: "working",
+          http_status: 200,
+          final_url: "",
+          dns_result: "",
+          latency_ms: null,
+          reason: "TrustPositif status Tidak Ada"
+        });
+  } catch (err) {
+    console.error("Provider registry verification error:", domain.domain, err.message);
+  }
 }
 
 function isImportantTransition(oldStatus, newStatus, worst) {
@@ -200,6 +242,8 @@ async function runChecks() {
         const nodeResult = await checkViaNode(domain.domain, node);
         results.push(nodeResult);
       }
+
+      await maybeAddProviderRegistryResult(domain, results);
 
       for (const r of results) {
         await pool.query(
