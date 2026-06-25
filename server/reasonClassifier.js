@@ -5,9 +5,10 @@ function classifyReasonType(result = {}) {
   const http = Number(result.http_status || 0);
   const haystack = `${reason} ${finalUrl}`;
 
-  if (haystack.includes("internetpositif") || haystack.includes("trustpositif") || haystack.includes("nawala")) {
-    return "BLOCKED_BY_PROVIDER";
-  }
+  if (reason.includes("trustpositif status tidak ada")) return "NORMAL";
+  if (reason.includes("trustpositif status ada")) return "BLOCKED_BY_PROVIDER";
+  if (haystack.includes("internetpositif") || haystack.includes("nawala")) return "BLOCKED_BY_PROVIDER";
+  if (haystack.includes("trustpositif") && (status === "blocked" || http === 451)) return "BLOCKED_BY_PROVIDER";
   if (reason.includes("block keyword detected")) return "BLOCKED_BY_PROVIDER";
   if (reason.includes("node polling timeout") || reason.includes("no response from device") || reason.includes("wrong network")) return "NODE_ISSUE";
   if (reason.includes("dns not found") || reason.includes("does not resolve") || reason.includes("enotfound") || reason.includes("dns has no usable record") || reason.includes("temporary failure")) {
