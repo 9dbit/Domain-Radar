@@ -12,7 +12,18 @@ const PROVIDER_NAME = process.env.PROVIDER_NAME || NODE_NAME;
 const NETWORK_TYPE = process.env.NETWORK_TYPE || "mobile";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 3000);
 const STATUS_KEYWORDS = (process.env.STATUS_KEYWORDS || "internetpositif,trustpositif,nawala").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
-const EXPECTED_ORG = String(process.env.EXPECTED_ORG || "").toLowerCase().trim();
+function inferExpectedOrg() {
+  const text = `${NODE_NAME} ${PROVIDER_NAME}`.toLowerCase();
+  if (text.includes("telkomsel")) return "telkomsel";
+  if (text.includes("indosat")) return "indosat";
+  if (text.includes("xl")) return "xl";
+  if (text.includes("smartfren")) return "smartfren";
+  if (text.includes("biznet")) return "biznet";
+  if (text.includes("indihome") || text.includes("telkom")) return "telkom";
+  return "";
+}
+
+const EXPECTED_ORG = String(process.env.EXPECTED_ORG || inferExpectedOrg()).toLowerCase().trim();
 const IPINFO_URL = process.env.IPINFO_URL || "https://ipinfo.io/json";
 
 if (!CENTRAL_URL || !NODE_NAME || !AGENT_SECRET) {
@@ -113,7 +124,7 @@ async function getPublicNetworkInfo() {
     const { data } = await axios.get(IPINFO_URL, { timeout: 8000 });
     const org = String(data?.org || "").toLowerCase();
     const ok = org.includes(EXPECTED_ORG);
-    return { ok, reason: ok ? "network matched" : `wrong network: ${data?.org || "unknown org"}`, data };
+    return { ok, reason: ok ? `network matched: ${data?.org || EXPECTED_ORG}` : `wrong network: expected ${EXPECTED_ORG}, got ${data?.org || "unknown org"}`, data };
   } catch (err) {
     return { ok: false, reason: `network check failed: ${err.code || err.message}`, data: null };
   }
@@ -175,7 +186,7 @@ async function pollOnce() {
     return;
   }
 
-  const { data } = await axios.post(`${CENTRAL_URL}/api/agent/poll`, { node_name: NODE_NAME, secret_key: AGENT_SECRET, telemetry, network_ok: true }, { timeout: 30000 });
+  const { data } = await axios.post(`${CENTRAL_URL}/api/agent/poll`, { node_name: NODE_NAME, secret_key: AGENT_SECRET, telemetry, network_ok: true, network_reason: net.reason }, { timeout: 30000 });
   if (!data.task) return;
   const { id, domain } = data.task;
   console.log(`[${new Date().toISOString()}] Task ${id}: ${domain}`);
