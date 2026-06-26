@@ -338,7 +338,17 @@ async function runChecks() {
 
           message = `${title}\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nConfirmed: ${retryLimit} checks\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}${redirectLine}\nTime: ${nowWib()} WIB`;
 
-          sent = await sendTelegram(message);
+          const telegramExtra = normalizeStatus(newStatus) === "blocked"
+            ? {
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: "✅ Noticed", callback_data: `noticed:${domain.id}:blocked` }
+                  ]]
+                }
+              }
+            : {};
+
+          sent = await sendTelegram(message, telegramExtra);
         }
 
         await pool.query(
