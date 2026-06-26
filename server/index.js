@@ -11,6 +11,7 @@ const { normalizeDomain, checkDomain, calculateGlobalStatus } = require("./check
 const settingsRoutes = require("./settingsRoutes");
 const projectRoutes = require("./projectRoutes");
 const rankRoutes = require("./rankRoutes");
+const trustpositifRoutes = require("./trustpositifRoutes");
 const { router: nodeRoutes } = require("./nodeRoutes");
 const { router: agentPollRoutes } = require("./agentPollRoutes");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
@@ -63,6 +64,7 @@ app.use("/api/settings", requireAdmin, settingsRoutes);
 app.use("/api/projects", requireAdmin, projectRoutes);
 app.use("/api/rank", requireAdmin, rankRoutes);
 app.use("/api/nodes", requireAdmin, nodeRoutes);
+app.use("/api", requireAdmin, trustpositifRoutes);
 
 app.post("/api/telegram/webhook", async (req, res) => {
   try {
