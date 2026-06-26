@@ -224,6 +224,7 @@ async function sendHourlyDigestIfDue() {
   const warning = domains.filter((d) => normalizeStatus(d.global_status) === "warning");
   const blocked = domains.filter((d) => normalizeStatus(d.global_status) === "blocked");
   const redirected = blocked.filter((d) => finalUrlMap.get(d.id));
+  const blockedOnly = blocked.filter((d) => !finalUrlMap.get(d.id));
 
   const message = [
     "DOMAIN RADAR HOURLY REPORT",
@@ -232,14 +233,16 @@ async function sendHourlyDigestIfDue() {
     `Total: ${domains.length}`,
     `✅ Normal: ${normal.length}`,
     `⚠️ Warning: ${warning.length}`,
-    `❗ Blocked: ${blocked.length - redirected.length}`,
+    `❗ Blocked: ${blockedOnly.length}`,
     `➡️ Blocked + redirected: ${redirected.length}`,
     "",
     formatDomainList("NORMAL", normal, finalUrlMap),
     "",
     formatDomainList("WARNING", warning, finalUrlMap),
     "",
-    formatDomainList("BLOCKED / REDIRECTED", blocked, finalUrlMap)
+    formatDomainList("BLOCKED", blockedOnly, finalUrlMap),
+    "",
+    formatDomainList("BLOCKED / REDIRECTED", redirected, finalUrlMap)
   ].join("\n");
 
   const sent = await sendTelegram(message);
