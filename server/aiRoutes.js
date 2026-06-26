@@ -22,6 +22,33 @@ async function latestFinalUrlMap() {
   return new Map(rows.map((row) => [row.domain_id, row.final_url || ""]));
 }
 
+function projectSeoAdvice(projectName, rows) {
+  const total = rows.length;
+  const normal = rows.filter((d) => normalizeStatus(d.global_status) === "working");
+  const warning = rows.filter((d) => normalizeStatus(d.global_status) === "warning");
+  const blocked = rows.filter((d) => normalizeStatus(d.global_status) === "blocked");
+  const score = total ? Math.max(0, Math.round((normal.length / total) * 100 - warning.length * 3 - blocked.length * 12)) : 0;
+  const tier = score >= 80 ? "STRONG" : score >= 55 ? "WATCH" : "RISK";
+
+  const actions = [];
+  if (blocked.length) actions.push("Move blocked domains into quarantine and exclude them from active SEO linking.");
+  if (warning.length) actions.push("Audit warning domains by DNS, SSL, HTTP, redirect, and provider-node reason before using them as support pages.");
+  if (normal.length) actions.push("Use normal domains as the active whitelist pool for internal linking and content distribution.");
+  if (!actions.length) actions.push("Add healthy domains before running SEO distribution for this project.");
+
+  return {
+    project_name: projectName,
+    score,
+    tier,
+    counts: { total, normal: normal.length, warning: warning.length, blocked: blocked.length },
+    summary: `${projectName}: ${tier} SEO health. ${normal.length}/${total} normal, ${warning.length} warning, ${blocked.length} blocked.`,
+    action: actions.join(" "),
+    normal_sample: normal.slice(0, 10).map((d) => d.domain),
+    warning_sample: warning.slice(0, 10).map((d) => d.domain),
+    blocked_sample: blocked.slice(0, 10).map((d) => d.domain)
+  };
+}
+
 router.get("/summary", async (req, res, next) => {
   try {
     const { rows: domains } = await pool.query(
@@ -52,6 +79,23 @@ router.get("/summary", async (req, res, next) => {
         blocked_redirected: redirected.slice(0, 20).map((d) => d.domain)
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/projects/seo", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, domain, COALESCE(NULLIF(project_name,''), 'No Project') AS project_name, global_status, last_status, last_checked_at FROM domains WHERE is_active=true ORDER BY project_name ASC, domain ASC"
+    );
+    const groups = new Map();
+    for (const row of rows) {
+      if (!groups.has(row.project_name)) groups.set(row.project_name, []);
+      groups.get(row.project_name).push(row);
+    }
+    const projects = Array.from(groups.entries()).map(([name, list]) => projectSeoAdvice(name, list));
+    res.json({ ok: true, generated_by: "Domain Radar AI", projects });
   } catch (err) {
     next(err);
   }
