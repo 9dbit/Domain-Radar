@@ -8,6 +8,7 @@ const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { classifyReasonType, reasonTypeLabel } = require("./reasonClassifier");
 const { verifyProviderBlock } = require("./providerBlockVerifier");
 const { isAcknowledged, clearAcknowledged } = require("./noticeState");
+const { generateIncidentAdvice, generateHourlySummary } = require("./aiAdvisor");
 
 let running = false;
 let reasonTypeColumnReady = false;
@@ -225,6 +226,7 @@ async function sendHourlyDigestIfDue() {
   const blocked = domains.filter((d) => normalizeStatus(d.global_status) === "blocked");
   const redirected = blocked.filter((d) => finalUrlMap.get(d.id));
   const blockedOnly = blocked.filter((d) => !finalUrlMap.get(d.id));
+  const aiHourlySummary = generateHourlySummary({ domains, normal, warning, blockedOnly, redirected });
 
   const message = [
     "DOMAIN RADAR HOURLY REPORT",
@@ -235,6 +237,9 @@ async function sendHourlyDigestIfDue() {
     `⚠️ Warning: ${warning.length}`,
     `❗ Blocked: ${blockedOnly.length}`,
     `➡️ Blocked + redirected: ${redirected.length}`,
+    "",
+    "AI SUMMARY",
+    aiHourlySummary,
     "",
     formatDomainList("NORMAL", normal, finalUrlMap),
     "",
@@ -339,7 +344,16 @@ async function runChecks() {
             ? `\nRedirected: ➡️ ${worst.final_url}`
             : "";
 
-          message = `${title}\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nConfirmed: ${retryLimit} checks\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}${redirectLine}\nTime: ${nowWib()} WIB`;
+          const aiAdvice = generateIncidentAdvice({
+            domain: domain.domain,
+            oldStatus,
+            newStatus,
+            confirmedChecks: retryLimit,
+            worst,
+            results: effectiveResults
+          });
+
+          message = `${title}\n\nDomain: ${domain.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nConfirmed: ${retryLimit} checks\nChecker: ${worst.provider_name}\nReason: ${worst.reason}\nFinal URL: ${worst.final_url || "-"}${redirectLine}\nTime: ${nowWib()} WIB\n\nAI DIAGNOSIS\n${aiAdvice}`;
 
           const telegramExtra = normalizeStatus(newStatus) === "blocked"
             ? {
