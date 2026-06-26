@@ -1,0 +1,9 @@
+(() => {
+  function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+  function smallList(items){if(!Array.isArray(items)||!items.length)return '-';return esc(items.slice(0,5).join(', '));}
+  async function getJson(url){const r=await fetch(url,{credentials:'include'});const j=await r.json();if(!r.ok)throw new Error(j.error||url);return j;}
+  function card(p){const tier=String(p.tier||'WATCH').toLowerCase();return '<article class="projectSeoCard '+tier+'"><div><b>'+esc(p.project_name)+'</b><span>'+esc(p.tier)+' · Score '+esc(p.score)+'/100</span></div><p>'+esc(p.summary)+'</p><small>'+esc(p.action)+'</small><ul><li>Normal: '+smallList(p.normal_sample)+'</li><li>Warning: '+smallList(p.warning_sample)+'</li><li>Blocked: '+smallList(p.blocked_sample)+'</li></ul></article>';}
+  async function injectSeo(){const page=document.getElementById('analyticsPage');if(!page||page.querySelector('[data-project-seo-section]'))return;try{const data=await getJson('/api/ai/projects/seo');const html=(data.projects||[]).map(card).join('')||'-';const section=document.createElement('article');section.className='analyticsCard analyticsWide';section.setAttribute('data-project-seo-section','1');section.innerHTML='<h3>SEO Analysis by Project</h3><div class="projectSeoGrid">'+html+'</div>';const samples=page.querySelector('.analyticsWide');if(samples)samples.before(section);else page.querySelector('.analyticsBody')?.appendChild(section);}catch(e){console.warn('Project SEO analytics unavailable',e.message||e);}}
+  const timer=setInterval(()=>{injectSeo();},1000);
+  window.addEventListener('focus',injectSeo);
+})();
