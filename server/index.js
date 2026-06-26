@@ -18,6 +18,7 @@ const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { loadSettings } = require("./settingsStore");
 const { sendTelegram, answerCallbackQuery, editMessageReplyMarkup } = require("./telegram");
 const { markAcknowledged } = require("./noticeState");
+const { normalizeEmail, isEmailWhitelistEnabled, isEmailAllowed } = require("./authAllowlist");
 
 const app = express();
 const sessionSecret = process.env.SESSION_SECRET || "domain-radar-dev-session-secret";
@@ -54,9 +55,9 @@ async function runSingleDomainCheck(domainRow) {
   return { old_status: oldStatus, new_status: newStatus, results };
 }
 
-app.get("/api/health", async (req, res) => { try { await pool.query("SELECT 1"); res.json({ ok: true, database: "connected", auth_enabled: Boolean(adminPassword) }); } catch (err) { res.status(500).json({ ok: false, database: "error", message: err.message }); } });
-app.get("/api/auth/me", (req, res) => res.json({ authenticated: !adminPassword || Boolean(req.session && req.session.isAdmin) }));
-app.post("/api/auth/login", (req, res) => { if (!adminPassword) { req.session.isAdmin = true; return res.json({ ok: true }); } if (String(req.body.password || "") !== adminPassword) return res.status(401).json({ error: "Invalid password" }); req.session.isAdmin = true; res.json({ ok: true }); });
+app.get("/api/health", async (req, res) => { try { await pool.query("SELECT 1"); res.json({ ok: true, database: "connected", auth_enabled: Boolean(adminPassword), email_whitelist_enabled: isEmailWhitelistEnabled() }); } catch (err) { res.status(500).json({ ok: false, database: "error", message: err.message }); } });
+app.get("/api/auth/me", (req, res) => res.json({ authenticated: !adminPassword || Boolean(req.session && req.session.isAdmin), email: req.session?.adminEmail || "" }));
+app.post("/api/auth/login", (req, res) => { if (!adminPassword) { req.session.isAdmin = true; req.session.adminEmail = normalizeEmail(req.body.email || ""); return res.json({ ok: true }); } const email = normalizeEmail(req.body.email || ""); if (String(req.body.password || "") !== adminPassword) return res.status(401).json({ error: "Invalid password" }); if (isEmailWhitelistEnabled() && !email) return res.status(401).json({ error: "Email required" }); if (!isEmailAllowed(email)) return res.status(403).json({ error: "Email not whitelisted" }); req.session.isAdmin = true; req.session.adminEmail = email; res.json({ ok: true, email }); });
 app.post("/api/auth/logout", (req, res) => { req.session.destroy(() => { res.clearCookie("domain_radar_sid"); res.json({ ok: true }); }); });
 
 app.use("/api/agent", agentPollRoutes);
