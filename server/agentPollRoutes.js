@@ -200,6 +200,29 @@ router.post("/result", async (req, res, next) => {
     if (!taskId) return res.status(400).json({ error: "task_id required" });
 
     const result = req.body.result || {};
+
+    const { rows: healthRows } = await pool.query(
+      "SELECT last_health_status, last_health_reason FROM provider_nodes WHERE id=$1 LIMIT 1",
+      [node.id]
+    );
+    const health = healthRows[0] || {};
+    const healthReason = String(health.last_health_reason || "").toLowerCase();
+    const waitingBecauseNetwork =
+      String(health.last_health_status || "").toLowerCase() === "waiting" &&
+      (healthReason.includes("wrong network") || healthReason.includes("network check failed"));
+
+    if (waitingBecauseNetwork) {
+      await pool.query(
+        "UPDATE provider_node_tasks SET status='error', error=$1, completed_at=NOW() WHERE id=$2 AND node_id=$3",
+        [health.last_health_reason || "wrong network", taskId, node.id]
+      );
+      await pool.query(
+        "UPDATE provider_nodes SET last_health_status='waiting', last_ping_at=NOW() WHERE id=$1",
+        [node.id]
+      );
+      return res.json({ ok: false, ignored: true, reason: health.last_health_reason || "wrong network" });
+    }
+
     await pool.query(
       `UPDATE provider_node_tasks
        SET status='done', result=$1::jsonb, completed_at=NOW()
