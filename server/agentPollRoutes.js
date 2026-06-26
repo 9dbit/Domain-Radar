@@ -161,12 +161,14 @@ router.post("/poll", async (req, res, next) => {
 
     if (req.body.network_ok === false) {
       const reason = String(req.body.network_reason || "wrong network").slice(0, 200);
-      await pool.query("UPDATE provider_nodes SET last_health_status='waiting', last_ping_at=NOW() WHERE id=$1", [node.id]);
+      await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS last_health_reason TEXT");
+      await pool.query("UPDATE provider_nodes SET last_health_status='waiting', last_health_reason=$1, last_ping_at=NOW() WHERE id=$2", [reason, node.id]);
       await upsertTelemetry(node, req.body.telemetry || {}, req);
       return res.json({ ok: true, task: null, waiting: true, reason });
     }
 
-    await pool.query("UPDATE provider_nodes SET last_health_status='online', last_ping_at=NOW() WHERE id=$1", [node.id]);
+    await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS last_health_reason TEXT");
+    await pool.query("UPDATE provider_nodes SET last_health_status='online', last_health_reason=$1, last_ping_at=NOW() WHERE id=$2", [req.body.network_reason || "network matched", node.id]);
     await upsertTelemetry(node, req.body.telemetry || {}, req);
 
     const { rows } = await pool.query(
@@ -205,7 +207,8 @@ router.post("/result", async (req, res, next) => {
       [JSON.stringify(result), taskId, node.id]
     );
     await syncDomainStatusFromTask(taskId, node, result);
-    await pool.query("UPDATE provider_nodes SET last_health_status='online', last_ping_at=NOW() WHERE id=$1", [node.id]);
+    await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS last_health_reason TEXT");
+    await pool.query("UPDATE provider_nodes SET last_health_status='online', last_health_reason='result submitted', last_ping_at=NOW() WHERE id=$1", [node.id]);
     await upsertTelemetry(node, req.body.telemetry || {}, req);
     res.json({ ok: true });
   } catch (err) {
