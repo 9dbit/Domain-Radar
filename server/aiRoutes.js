@@ -148,4 +148,115 @@ router.get("/domain/:id", async (req, res, next) => {
   }
 });
 
+router.get("/seo-brief", async (req, res, next) => {
+  try {
+    const { rows: projectRows } = await pool.query(`
+      SELECT DISTINCT COALESCE(NULLIF(project_name,''), 'Default') AS project_name
+      FROM rank_keyword_groups
+      ORDER BY 1
+    `);
+    const projects_list = projectRows.map(r => r.project_name);
+
+    const projectName = String(req.query.project || "").trim();
+    if (!projectName) {
+      return res.json({ ok: true, projects_list });
+    }
+
+    const { rows: kwGroups } = await pool.query(
+      `SELECT id, keyword, last_checked_at
+       FROM rank_keyword_groups
+       WHERE COALESCE(NULLIF(project_name,''), 'Default') = $1
+       ORDER BY keyword`,
+      [projectName]
+    );
+    const groupIds = kwGroups.map(g => g.id);
+
+    let kwDomains = [];
+    if (groupIds.length) {
+      const { rows } = await pool.query(
+        `SELECT group_id, domain, last_position, last_page, last_matched_url, last_status
+         FROM rank_keyword_domains
+         WHERE group_id = ANY($1)
+         ORDER BY group_id, last_position ASC NULLS LAST`,
+        [groupIds]
+      );
+      kwDomains = rows;
+    }
+
+    const keywords = kwGroups.map(g => ({
+      keyword: g.keyword,
+      last_checked_at: g.last_checked_at,
+      domains: kwDomains
+        .filter(d => d.group_id === g.id)
+        .map(d => ({
+          domain: d.domain,
+          position: d.last_position || 0,
+          page: d.last_page || 0,
+          matched_url: d.last_matched_url || "",
+          status: d.last_status || "pending"
+        }))
+    }));
+
+    const { rows: domainRows } = await pool.query(
+      `SELECT id, domain, global_status
+       FROM domains
+       WHERE is_active = true
+         AND COALESCE(NULLIF(project_name,''), 'Default') = $1
+       ORDER BY domain`,
+      [projectName]
+    );
+    const domainIds = domainRows.map(d => d.id);
+
+    const finalUrlMap = new Map();
+    if (domainIds.length) {
+      const { rows: fuRows } = await pool.query(
+        `SELECT DISTINCT ON (domain_id) domain_id, final_url
+         FROM check_results
+         WHERE domain_id = ANY($1) AND COALESCE(final_url,'') <> ''
+         ORDER BY domain_id, checked_at DESC`,
+        [domainIds]
+      );
+      fuRows.forEach(r => finalUrlMap.set(r.domain_id, r.final_url));
+    }
+
+    const domains = domainRows.map(d => ({
+      domain: d.domain,
+      global_status: d.global_status,
+      final_url: finalUrlMap.get(d.id) || ""
+    }));
+
+    const redirect_issues = domains.filter(d => {
+      if (!d.final_url) return false;
+      const domBase = d.domain.replace(/^https?:\/\//, "").replace(/\/$/, "").split("/")[0];
+      const finalBase = d.final_url.replace(/^https?:\/\//, "").replace(/\/$/, "").split("/")[0];
+      return !finalBase.endsWith(domBase);
+    }).map(d => ({ domain: d.domain, final_url: d.final_url }));
+
+    let serp_competitors = [];
+    if (groupIds.length) {
+      const { rows } = await pool.query(
+        `SELECT host, COUNT(*)::int AS appearances, MIN(position) AS best_position
+         FROM rank_scan_results
+         WHERE group_id = ANY($1) AND classification = 'suspicious'
+         GROUP BY host
+         ORDER BY appearances DESC, best_position ASC
+         LIMIT 8`,
+        [groupIds]
+      );
+      serp_competitors = rows;
+    }
+
+    const ranked = keywords.flatMap(k => k.domains.filter(d => d.position > 0));
+    const avgPos = ranked.length ? ranked.reduce((s, d) => s + d.position, 0) / ranked.length : 50;
+    const workingDomains = domains.filter(d => normalizeStatus(d.global_status) === "working");
+    const posScore = Math.max(0, 100 - (avgPos - 1) * 2);
+    const poolScore = domains.length ? (workingDomains.length / domains.length) * 100 : 0;
+    const seo_score = Math.max(0, Math.min(100, Math.round(posScore * 0.5 + poolScore * 0.4 - redirect_issues.length * 5)));
+
+    res.json({ ok: true, project: projectName, keywords, domains, redirect_issues, serp_competitors, seo_score, projects_list });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

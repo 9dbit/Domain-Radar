@@ -1,7 +1,7 @@
 (() => {
   const PANEL_ID = "domain-radar-ai-advisor-panel";
-  let lastSummary = null;
-  let lastDomains = [];
+  let lastBrief = null;
+  let lastProjects = [];
   let scanIndex = 0;
   let scanTimer = null;
 
@@ -22,61 +22,144 @@
     return value || "unknown";
   }
 
-  function statusIcon(status) {
-    const value = normalizeStatus(status);
-    if (value === "working") return "✅";
-    if (value === "warning") return "⚠️";
-    if (value === "blocked") return "❗";
-    return "•";
-  }
-
   function lineHtml(text) {
-    return String(text || "AI Advisor ready. Refresh untuk membaca kondisi terbaru.")
+    return String(text || "SEO AI ready.")
       .split("\n")
       .map((line) => `<p>${escapeHtml(line)}</p>`)
       .join("");
   }
 
-  function compactList(items, limit = 6) {
-    if (!Array.isArray(items) || !items.length) return "-";
-    const shown = items.slice(0, limit).join(", ");
-    return items.length > limit ? `${shown} +${items.length - limit} more` : shown;
-  }
-
-  function makeAnswer(question) {
+  function makeSeoAnswer(question, brief) {
     const q = String(question || "").toLowerCase();
-    const counts = lastSummary?.counts || {};
-    const samples = lastSummary?.samples || {};
-    const warning = samples.warning || [];
-    const blocked = samples.blocked || [];
-    const redirected = samples.blocked_redirected || [];
-    const totalBlocked = Number(counts.blocked || 0) + Number(counts.blocked_redirected || 0);
+    if (!brief) return "No SEO data loaded. Select a project and click Refresh.";
 
-    if (!lastSummary) return "AI belum punya snapshot. Klik Refresh AI dulu.";
+    const {
+      keywords = [], domains = [], redirect_issues = [],
+      serp_competitors = [], seo_score = 0, project = ""
+    } = brief;
 
-    if (q.includes("urgent") || q.includes("priority") || q.includes("prioritas")) {
-      if (totalBlocked > 0) return `Prioritas utama: ${totalBlocked} blocked domain. Cek BLOCKED dan BLOCKED / REDIRECTED dulu. Sample: ${compactList([...blocked, ...redirected], 8)}.`;
-      if (warning.length) return `Prioritas utama: ${warning.length} warning domain. Cek DNS, SSL, redirect, dan provider-node noise. Sample: ${compactList(warning, 8)}.`;
-      return "Tidak ada incident urgent. Fokus monitoring dan pastikan node provider tetap valid.";
+    const workingDomains = domains.filter(d => normalizeStatus(d.global_status) === "working");
+    const blockedDomains = domains.filter(d => normalizeStatus(d.global_status) === "blocked");
+    const warnDomains = domains.filter(d => normalizeStatus(d.global_status) === "warning");
+
+    const rankedKeywords = keywords
+      .map(k => {
+        const best = k.domains.filter(d => d.position > 0).sort((a, b) => a.position - b.position)[0];
+        return best ? { keyword: k.keyword, ...best } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.position - b.position);
+
+    const avgPos = rankedKeywords.length
+      ? Math.round(rankedKeywords.reduce((s, k) => s + k.position, 0) / rankedKeywords.length)
+      : null;
+
+    if (q.includes("rank") || q.includes("plan") || q.includes("#1") || q.includes("strategi") || q.includes("strategy")) {
+      if (!rankedKeywords.length) {
+        return "No ranking data yet for this project. Run a keyword scan first, then I can show which keywords are closest to page 1 and build your rank #1 strategy.";
+      }
+      const best = rankedKeywords[0];
+      const linkPool = workingDomains.slice(0, 5).map(d => d.domain);
+      let advice = `🎯 Rank #1 Plan — "${best.keyword}"\n`;
+      advice += `• Current position: #${best.position} — Page ${best.page > 0 ? best.page : 1}\n`;
+      if (best.page > 1) {
+        advice += `• Still on page ${best.page} — needs significant improvement\n`;
+      } else if (best.position > 3) {
+        advice += `• In top 10! Need ${best.position - 1} more positions to reach #1\n`;
+      } else {
+        advice += `• Already top 3! Push to #1 with more authority links\n`;
+      }
+      if (best.matched_url) advice += `• Ranking URL: ${best.matched_url}\n`;
+      advice += `\n🔗 Link pool for anchor "${best.keyword}":\n`;
+      advice += linkPool.length
+        ? linkPool.map(d => `  • ${d}`).join("\n")
+        : "  Add healthy domains to project pool first";
+      if (redirect_issues.length) advice += `\n\n⚠️ Fix ${redirect_issues.length} redirect issue(s) first — they leak link equity`;
+      return advice;
     }
 
-    if (q.includes("blocked") || q.includes("block")) {
-      return `Blocked murni: ${counts.blocked || 0}. Blocked / redirected: ${counts.blocked_redirected || 0}. Blocked: ${compactList(blocked, 8)}. Redirected: ${compactList(redirected, 8)}.`;
+    if (q.includes("link") || q.includes("architect") || q.includes("tier")) {
+      let advice = `🔗 Link Architecture — ${project}\n`;
+      advice += `\nTier-1 sources (${workingDomains.length} healthy — safe to link):\n`;
+      if (workingDomains.length) {
+        workingDomains.slice(0, 8).forEach(d => { advice += `  ✅ ${d.domain}\n`; });
+      } else {
+        advice += "  No healthy domains yet — add domains to this project\n";
+      }
+      if (warnDomains.length) {
+        advice += `\nAudit first (${warnDomains.length} warning — check DNS/SSL):\n`;
+        warnDomains.slice(0, 4).forEach(d => { advice += `  ⚠️ ${d.domain}\n`; });
+      }
+      if (blockedDomains.length) {
+        advice += `\nQuarantine — do NOT use for linking (${blockedDomains.length} blocked):\n`;
+        blockedDomains.slice(0, 4).forEach(d => { advice += `  🚫 ${d.domain}\n`; });
+      }
+      if (redirect_issues.length) {
+        advice += `\nRemove — canonical mismatch (${redirect_issues.length}):\n`;
+        redirect_issues.slice(0, 4).forEach(r => { advice += `  ↩ ${r.domain}\n`; });
+      }
+      return advice;
     }
 
-    if (q.includes("warning") || q.includes("warn")) {
-      return `Warning domain: ${counts.warning || 0}. Sample: ${compactList(warning, 10)}. Action: cek reason history untuk DNS, SSL, redirect, timeout, atau node issue.`;
+    if ((q.includes("redirect") || q.includes("audit")) && !q.includes("canonical")) {
+      if (!redirect_issues.length) return "✅ No redirect issues detected. All domains resolve to their correct canonical URLs.";
+      let advice = `↩ Redirect Audit — ${redirect_issues.length} issue(s):\n`;
+      redirect_issues.slice(0, 8).forEach(r => {
+        advice += `  • ${r.domain}\n    → ${r.final_url}\n`;
+      });
+      advice += "\nAction: Remove from link pool or fix redirect targets to correct canonical URLs.";
+      return advice;
     }
 
-    if (q.includes("safe") || q.includes("aman") || q.includes("normal")) {
-      return `Normal domain: ${counts.normal || 0} dari ${counts.total || 0}. Untuk domain aman detail, gunakan filter NORMAL di tabel utama.`;
+    if (q.includes("canonical")) {
+      if (!redirect_issues.length) return "✅ No canonical mismatches. All domains resolve to their expected base URLs.";
+      let advice = `🔄 Canonical Issues — ${redirect_issues.length} mismatch(es):\n`;
+      redirect_issues.slice(0, 6).forEach(r => {
+        advice += `  • ${r.domain}\n    Expected: https://${r.domain}\n    Resolves: ${r.final_url}\n`;
+      });
+      advice += "\nFix: Set canonical tag to correct URL or 301-redirect to proper domain root.";
+      return advice;
     }
 
-    if (q.includes("redirect")) {
-      return `Blocked / redirected: ${counts.blocked_redirected || 0}. Sample: ${compactList(redirected, 8)}. Action: audit final URL dan pisahkan dari block registry murni.`;
+    if (q.includes("compet") || q.includes("rival") || q.includes("serp")) {
+      if (!serp_competitors.length) return "No competitor data yet. Run keyword scans so I can identify which non-whitelisted domains are outranking your link pool.";
+      let advice = `🔎 SERP Competition — Threats to your keywords:\n`;
+      serp_competitors.slice(0, 6).forEach(c => {
+        advice += `  • ${c.host} — appears ${c.appearances}x, best rank #${c.best_position}\n`;
+      });
+      advice += "\nStrategy: Analyze their backlink profiles and content gaps to find ranking opportunities.";
+      return advice;
     }
 
-    return `${lastSummary.summary || "AI summary unavailable."}\n\nTip: coba tanya "urgent today", "blocked analysis", "warning cleanup", "safe domains", atau "redirect audit".`;
+    if (q.includes("pool") || q.includes("health") || q.includes("domain")) {
+      const total = domains.length;
+      const tier = seo_score >= 80 ? "STRONG 💪" : seo_score >= 55 ? "WATCH ⚠️" : "RISK 🚨";
+      let advice = `💪 Domain Pool — ${tier} (Score: ${seo_score}/100)\n`;
+      advice += `  Total domains: ${total}\n`;
+      advice += `  Healthy (usable): ${workingDomains.length}`;
+      if (total) advice += ` (${Math.round(workingDomains.length / total * 100)}%)`;
+      advice += "\n";
+      if (warnDomains.length) advice += `  Warning: ${warnDomains.length} — audit DNS/SSL/redirect\n`;
+      if (blockedDomains.length) advice += `  Blocked: ${blockedDomains.length} — exclude from linking\n`;
+      if (redirect_issues.length) advice += `  Redirect issues: ${redirect_issues.length} — fix canonical\n`;
+      const rec = workingDomains.length < 5
+        ? "Add more healthy domains to build sufficient link equity for keyword rankings."
+        : workingDomains.length / (total || 1) > 0.8
+        ? "Pool is in great shape. Use these domains for high-authority internal linking."
+        : "Recover warning domains — check each for DNS, SSL, and redirect issues.";
+      advice += `\n💡 ${rec}`;
+      return advice;
+    }
+
+    const kCount = keywords.length;
+    let advice = `📊 ${project} — SEO Overview\n`;
+    advice += `  ${kCount} keyword${kCount !== 1 ? "s" : ""} tracked`;
+    if (avgPos) advice += `, avg position #${avgPos}`;
+    advice += `\n  Pool: ${workingDomains.length}/${domains.length} healthy domains`;
+    if (redirect_issues.length) advice += `\n  ⚠️ ${redirect_issues.length} redirect issue(s) to fix`;
+    if (serp_competitors.length) advice += `\n  🔎 ${serp_competitors.length} competitor domain(s) detected`;
+    advice += `\n\nAsk: "Rank #1 Plan", "Link Architecture", "Redirect Audit", "Canonical Issues", "Competition", or "Pool Health"`;
+    return advice;
   }
 
   function panelShell() {
@@ -90,56 +173,61 @@
             <span class="aiAdvisorSpark">✦</span>
             <div>
               <b>Domain Radar AI</b>
-              <small>Intelligent domain advisor</small>
+              <small>SEO intelligence advisor</small>
             </div>
           </div>
           <button class="aiCloseBtn" type="button" data-ai-collapse aria-label="Close">✕</button>
         </div>
 
+        <select class="aiProjectSelect" data-ai-project>
+          <option value="">Loading projects...</option>
+        </select>
+
         <div class="aiMetricMini">
-          <div class="aiMetricCard aiMetricCard--cyan"><b data-ai-total>-</b><span>Total</span></div>
-          <div class="aiMetricCard aiMetricCard--amber"><b data-ai-warning>-</b><span>Warn</span></div>
-          <div class="aiMetricCard aiMetricCard--red"><b data-ai-blocked>-</b><span>Block</span></div>
-          <div class="aiMetricCard aiMetricCard--purple"><b data-ai-redirected>-</b><span>Redir</span></div>
+          <div class="aiMetricCard aiMetricCard--cyan"><b data-ai-keywords>-</b><span>Keywords</span></div>
+          <div class="aiMetricCard aiMetricCard--amber"><b data-ai-avgpos>-</b><span>Avg Pos</span></div>
+          <div class="aiMetricCard aiMetricCard--emerald"><b data-ai-pool>-</b><span>Pool</span></div>
+          <div class="aiMetricCard aiMetricCard--purple"><b data-ai-redirects>-</b><span>Redirs</span></div>
         </div>
 
         <div class="aiScannerBox">
           <div class="aiRadar"><i></i><span></span></div>
           <div class="aiScanInfo">
-            <b data-scan-title>Scanning domains</b>
-            <small data-scan-domain>Initializing...</small>
+            <b data-scan-title>Tracking keywords</b>
+            <small data-scan-domain>Loading...</small>
             <div class="aiScanBar"><i data-scan-bar></i></div>
           </div>
         </div>
 
-        <div class="aiAdvisorText"><p>Loading AI Advisor...</p></div>
+        <div class="aiAdvisorText"><p>Select a project to load SEO intelligence...</p></div>
 
         <div class="aiSamples">
           <div class="aiSampleCard">
-            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--red"></span>Blocked</div>
-            <div class="aiSampleList" data-ai-blocked-list>-</div>
+            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--cyan"></span>Keyword Rankings</div>
+            <div class="aiSampleList" data-ai-keyword-list>-</div>
           </div>
           <div class="aiSampleCard">
-            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--purple"></span>Redirected</div>
+            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--red"></span>Redirect Issues</div>
             <div class="aiSampleList" data-ai-redirected-list>-</div>
           </div>
         </div>
 
         <div class="aiPromptChips">
-          <button type="button" data-ai-prompt="urgent today">🔥 Urgent</button>
-          <button type="button" data-ai-prompt="blocked analysis">🚫 Blocked</button>
-          <button type="button" data-ai-prompt="warning cleanup">⚡ Warning</button>
-          <button type="button" data-ai-prompt="safe domains">✅ Safe</button>
+          <button type="button" data-ai-prompt="rank plan">🎯 Rank #1</button>
+          <button type="button" data-ai-prompt="link architecture">🔗 Linking</button>
           <button type="button" data-ai-prompt="redirect audit">↩ Redirects</button>
+          <button type="button" data-ai-prompt="canonical issues">🔄 Canonical</button>
+          <button type="button" data-ai-prompt="competition">🔎 Competition</button>
+          <button type="button" data-ai-prompt="pool health">💪 Pool</button>
         </div>
 
         <div class="aiAnswerBox">
           <div class="aiAnswerLabel">AI Response</div>
-          <p data-ai-answer>Ask a question or use a quick prompt above.</p>
+          <p data-ai-answer>Ask a question or tap a quick prompt above.</p>
         </div>
 
         <form class="aiAskBox" data-ai-form>
-          <input data-ai-input placeholder="Ask about your domains..." />
+          <input data-ai-input placeholder="Ask about SEO, keywords, links..." />
           <button type="submit">→</button>
         </form>
 
@@ -159,12 +247,20 @@
     const collapse = panel.querySelector("[data-ai-collapse]");
     const refresh = panel.querySelector("[data-ai-refresh]");
     const form = panel.querySelector("[data-ai-form]");
+    const projectSelect = panel.querySelector("[data-ai-project]");
 
     const closeDrawer = () => document.body.classList.remove("aiSidebarOpen");
     toggle?.addEventListener("click", () => document.body.classList.toggle("aiSidebarOpen"));
     backdrop?.addEventListener("click", closeDrawer);
     collapse?.addEventListener("click", closeDrawer);
-    refresh?.addEventListener("click", () => loadAiSummary(true));
+    refresh?.addEventListener("click", () => {
+      const p = panel.querySelector("[data-ai-project]")?.value;
+      if (p) loadSeoBrief(p, true); else loadProjects();
+    });
+    projectSelect?.addEventListener("change", () => {
+      const p = projectSelect.value;
+      if (p) loadSeoBrief(p, true);
+    });
     panel.querySelectorAll("[data-ai-prompt]").forEach((btn) => {
       btn.addEventListener("click", () => askAi(btn.getAttribute("data-ai-prompt") || ""));
     });
@@ -175,78 +271,138 @@
       if (input) input.value = "";
     });
 
-    loadAiSummary(false);
+    loadProjects();
     return true;
   }
 
-  async function loadAiSummary(manual) {
+  async function loadProjects() {
     const panel = document.getElementById(PANEL_ID);
     if (!panel) return;
-    const refresh = panel.querySelector("[data-ai-refresh]");
-    if (refresh) refresh.textContent = manual ? "Thinking..." : "Refresh AI";
-
     try {
-      const [summaryRes, domainsRes] = await Promise.all([
-        fetch("/api/ai/summary", { credentials: "include" }),
-        fetch("/api/domains", { credentials: "include" })
-      ]);
-      const summary = await summaryRes.json();
-      const domains = await domainsRes.json();
-      if (!summaryRes.ok) throw new Error(summary.error || "AI summary failed");
-      if (!domainsRes.ok) throw new Error(domains.error || "Domain list failed");
-
-      lastSummary = summary;
-      lastDomains = Array.isArray(domains) ? domains : [];
-      renderSummary(summary);
-      startScanner();
+      const res = await fetch("/api/ai/seo-brief", { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed to load projects");
+      lastProjects = data.projects_list || [];
+      const select = panel.querySelector("[data-ai-project]");
+      if (select) {
+        select.innerHTML = lastProjects.length
+          ? lastProjects.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("")
+          : `<option value="">No projects found</option>`;
+      }
+      if (lastProjects.length > 0) {
+        loadSeoBrief(lastProjects[0], false);
+      } else {
+        panel.querySelector(".aiAdvisorText").innerHTML =
+          "<p>No keyword projects found. Add keywords in Rank Defense to start SEO tracking.</p>";
+      }
     } catch (err) {
-      panel.querySelector(".aiAdvisorText").innerHTML = `<p>AI Advisor unavailable: ${escapeHtml(err.message || err)}</p>`;
-    } finally {
-      if (refresh) refresh.textContent = "Refresh AI";
+      const textEl = panel.querySelector(".aiAdvisorText");
+      if (textEl) textEl.innerHTML = `<p>Could not load projects: ${escapeHtml(String(err.message || err))}</p>`;
     }
   }
 
-  function renderSummary(data) {
+  async function loadSeoBrief(projectName, manual) {
     const panel = document.getElementById(PANEL_ID);
     if (!panel) return;
-    const counts = data.counts || {};
-    panel.querySelector("[data-ai-total]").textContent = counts.total ?? "-";
-    panel.querySelector("[data-ai-warning]").textContent = counts.warning ?? "-";
-    panel.querySelector("[data-ai-blocked]").textContent = counts.blocked ?? "-";
-    panel.querySelector("[data-ai-redirected]").textContent = counts.blocked_redirected ?? "-";
-    panel.querySelector(".aiAdvisorText").innerHTML = lineHtml(data.summary);
-    panel.querySelector("[data-ai-blocked-list]").textContent = compactList(data.samples?.blocked || [], 6);
-    panel.querySelector("[data-ai-redirected-list]").textContent = compactList(data.samples?.blocked_redirected || [], 6);
+    const refresh = panel.querySelector("[data-ai-refresh]");
+    if (refresh) refresh.textContent = manual ? "Thinking..." : "⟳ Refresh";
+    try {
+      const res = await fetch(`/api/ai/seo-brief?project=${encodeURIComponent(projectName)}`, { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "SEO brief failed");
+      lastBrief = data;
+      renderBrief(data);
+      startKeywordTicker();
+    } catch (err) {
+      const textEl = panel.querySelector(".aiAdvisorText");
+      if (textEl) textEl.innerHTML = `<p>SEO data unavailable: ${escapeHtml(String(err.message || err))}</p>`;
+    } finally {
+      if (refresh) refresh.textContent = "⟳ Refresh";
+    }
   }
 
-  function startScanner() {
+  function renderBrief(brief) {
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel || !brief) return;
+
+    const { keywords = [], domains = [], redirect_issues = [], seo_score = 0, project = "" } = brief;
+    const working = domains.filter(d => normalizeStatus(d.global_status) === "working");
+
+    panel.querySelector("[data-ai-keywords]").textContent = keywords.length || "-";
+
+    const ranked = keywords.flatMap(k => k.domains.filter(d => d.position > 0));
+    const avgPos = ranked.length
+      ? Math.round(ranked.reduce((s, d) => s + d.position, 0) / ranked.length)
+      : null;
+    panel.querySelector("[data-ai-avgpos]").textContent = avgPos ? `#${avgPos}` : "-";
+    panel.querySelector("[data-ai-pool]").textContent = domains.length ? `${working.length}/${domains.length}` : "-";
+    panel.querySelector("[data-ai-redirects]").textContent = redirect_issues.length;
+
+    const tier = seo_score >= 80 ? "STRONG" : seo_score >= 55 ? "WATCH" : seo_score > 0 ? "RISK" : "NEW";
+    const summaryParts = [
+      `${project}: ${tier} SEO profile (score ${seo_score}/100).`,
+      `${keywords.length} keyword${keywords.length !== 1 ? "s" : ""} tracked.`,
+      avgPos ? `Avg rank: #${avgPos}.` : "No ranking data yet — run a keyword scan.",
+      `Pool: ${working.length}/${domains.length} healthy domains.`,
+      redirect_issues.length ? `⚠️ ${redirect_issues.length} redirect issue(s) detected.` : "✅ No redirect issues."
+    ];
+    panel.querySelector(".aiAdvisorText").innerHTML = lineHtml(summaryParts.join(" "));
+
+    const kwLines = keywords
+      .slice(0, 6)
+      .map(k => {
+        const best = k.domains.filter(d => d.position > 0).sort((a, b) => a.position - b.position)[0];
+        return best ? `${k.keyword} → #${best.position}` : `${k.keyword} (not ranked)`;
+      })
+      .join(", ");
+    const kwListEl = panel.querySelector("[data-ai-keyword-list]");
+    if (kwListEl) kwListEl.textContent = kwLines || "-";
+
+    const redirEl = panel.querySelector("[data-ai-redirected-list]");
+    if (redirEl) {
+      redirEl.textContent = redirect_issues.length
+        ? redirect_issues.slice(0, 5).map(r => r.domain).join(", ")
+        : "✅ None detected";
+    }
+  }
+
+  function startKeywordTicker() {
     if (scanTimer) clearInterval(scanTimer);
     scanIndex = 0;
-    const domains = lastDomains.length ? lastDomains : [{ domain: "No domain loaded", global_status: "unknown" }];
+    const keywords = lastBrief?.keywords?.length
+      ? lastBrief.keywords
+      : [{ keyword: "No keywords tracked yet", domains: [] }];
+
     scanTimer = setInterval(() => {
       const panel = document.getElementById(PANEL_ID);
       if (!panel) return;
-      const item = domains[scanIndex % domains.length];
-      const pct = Math.round(((scanIndex % domains.length) + 1) / domains.length * 100);
-      panel.querySelector("[data-scan-domain]").textContent = `${statusIcon(item.global_status)} ${item.domain || "unknown"}`;
-      panel.querySelector("[data-scan-bar]").style.width = `${pct}%`;
-      panel.querySelector("[data-scan-title]").textContent = `Scanning ${domains.length} whitelisted domains`;
+      const kw = keywords[scanIndex % keywords.length];
+      const best = (kw.domains || []).filter(d => d.position > 0).sort((a, b) => a.position - b.position)[0];
+      const posLabel = best ? ` — #${best.position}` : "";
+      panel.querySelector("[data-scan-domain]").textContent = `🔑 ${kw.keyword}${posLabel}`;
+      panel.querySelector("[data-scan-bar]").style.width =
+        `${Math.round(((scanIndex % keywords.length) + 1) / keywords.length * 100)}%`;
+      panel.querySelector("[data-scan-title]").textContent =
+        `Tracking ${keywords.length} keyword${keywords.length !== 1 ? "s" : ""}`;
       scanIndex += 1;
-    }, 950);
+    }, 1200);
   }
 
   function askAi(question) {
     const panel = document.getElementById(PANEL_ID);
     if (!panel) return;
-    const answer = makeAnswer(question);
+    const answer = makeSeoAnswer(question, lastBrief);
     panel.querySelector("[data-ai-answer]").innerHTML = escapeHtml(answer).replace(/\n/g, "<br>");
   }
 
-  const timer = setInterval(() => {
-    if (mountPanel()) clearInterval(timer);
+  const mountTimer = setInterval(() => {
+    if (mountPanel()) clearInterval(mountTimer);
   }, 500);
 
   window.addEventListener("focus", () => {
-    if (document.getElementById(PANEL_ID)) loadAiSummary(false);
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel) return;
+    const p = panel.querySelector("[data-ai-project]")?.value;
+    if (p) loadSeoBrief(p, false);
   });
 })();
