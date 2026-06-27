@@ -227,9 +227,11 @@ router.get("/seo-brief", async (req, res, next) => {
 
     const redirect_issues = domains.filter(d => {
       if (!d.final_url) return false;
-      const domBase = d.domain.replace(/^https?:\/\//, "").replace(/\/$/, "").split("/")[0];
-      const finalBase = d.final_url.replace(/^https?:\/\//, "").replace(/\/$/, "").split("/")[0];
-      return !finalBase.endsWith(domBase);
+      const domBase = d.domain.replace(/^https?:\/\//, "").replace(/\/$/, "").split("/")[0].toLowerCase();
+      const finalBase = d.final_url.replace(/^https?:\/\//, "").replace(/\/$/, "").split("/")[0].toLowerCase();
+      const isExactMatch = finalBase === domBase;
+      const isSubdomain = finalBase.endsWith("." + domBase);
+      return !isExactMatch && !isSubdomain;
     }).map(d => ({ domain: d.domain, final_url: d.final_url }));
 
     let serp_competitors = [];
@@ -237,7 +239,7 @@ router.get("/seo-brief", async (req, res, next) => {
       const { rows } = await pool.query(
         `SELECT host, COUNT(*)::int AS appearances, MIN(position) AS best_position
          FROM rank_scan_results
-         WHERE group_id = ANY($1) AND classification = 'suspicious'
+         WHERE group_id = ANY($1) AND LOWER(COALESCE(classification,'')) <> 'whitelisted'
          GROUP BY host
          ORDER BY appearances DESC, best_position ASC
          LIMIT 8`,
