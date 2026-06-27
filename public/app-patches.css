@@ -166,31 +166,6 @@
 .aiScanBar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.06); margin-top: 6px; overflow: hidden; }
 .aiScanBar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #22d3ee, #6366f1); width: 0; transition: width .5s ease; }
 
-/* AI summary card */
-.aiAdvisorText {
-  max-height: 110px; overflow-y: auto; padding: 10px 12px; border-radius: 12px;
-  background: rgba(255,255,255,.03);
-  border: 1px solid rgba(255,255,255,.06); border-left: 3px solid #22d3ee;
-}
-.aiAdvisorText p { font-size: 11px; line-height: 1.55; color: #cbd5e1; margin: 0; overflow-wrap: anywhere; }
-
-/* Blocked / Redirected samples */
-.aiSamples { display: flex; flex-direction: column; gap: 5px; }
-.aiSampleCard {
-  padding: 8px 10px; border-radius: 11px;
-  background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.06);
-}
-.aiSampleLabel {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 10px; font-weight: 800; color: #64748b;
-  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px;
-}
-.aiSampleDot { width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0; }
-.aiSampleDot--red { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,.5); }
-.aiSampleDot--purple { background: #a855f7; box-shadow: 0 0 6px rgba(168,85,247,.5); }
-.aiSampleDot--cyan { background: #22d3ee; box-shadow: 0 0 6px rgba(34,211,238,.5); }
-.aiSampleList { font-size: 10px; color: #94a3b8; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
-
 /* Prompt chips */
 .aiPromptChips { display: flex; flex-wrap: wrap; gap: 5px; }
 .aiPromptChips button {
@@ -206,7 +181,7 @@
 
 /* Answer bubble */
 .aiAnswerBox {
-  flex: 1 1 auto; min-height: 80px; max-height: 160px; overflow-y: auto;
+  flex: 1 1 auto; min-height: 120px; max-height: 240px; overflow-y: auto;
   padding: 10px 12px; border-radius: 12px;
   background: rgba(99,102,241,.06); border: 1px solid rgba(99,102,241,.15);
 }
@@ -239,6 +214,9 @@
 .aiAskBox button:hover { opacity: .85; transform: scale(1.05); }
 .aiRefreshFull { height: 32px; font-size: 10px; opacity: .5; letter-spacing: .02em; }
 .aiRefreshFull:hover { opacity: .85; }
+
+/* Prevent floating AI button from covering last-row content */
+.contentMain { padding-bottom: 88px; }
 
 /* Alert center mobile */
 .alertList { align-items: stretch; }

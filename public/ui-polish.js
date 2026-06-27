@@ -6,8 +6,7 @@
     const rank = buttons.find((b) => /google rank/i.test(b.textContent || ''));
     if (!rank) return;
 
-    rank.insertAdjacentHTML('afterend', '<button data-defense-nav type="button">🛡 Defense Center</button><button data-analytics-nav type="button">✦ Analytics</button>');
-    side.querySelector('[data-defense-nav]').onclick = () => { location.href = '/rank-defense.html'; };
+    rank.insertAdjacentHTML('afterend', '<button data-analytics-nav type="button">✦ Analytics</button>');
     side.querySelector('[data-analytics-nav]').onclick = () => showAnalytics();
 
     buttons.forEach((b) => b.addEventListener('click', () => hideAnalytics()));

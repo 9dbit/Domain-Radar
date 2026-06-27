@@ -199,19 +199,6 @@
           </div>
         </div>
 
-        <div class="aiAdvisorText"><p>Select a project to load SEO intelligence...</p></div>
-
-        <div class="aiSamples">
-          <div class="aiSampleCard">
-            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--cyan"></span>Keyword Rankings</div>
-            <div class="aiSampleList" data-ai-keyword-list>-</div>
-          </div>
-          <div class="aiSampleCard">
-            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--red"></span>Redirect Issues</div>
-            <div class="aiSampleList" data-ai-redirected-list>-</div>
-          </div>
-        </div>
-
         <div class="aiPromptChips">
           <button type="button" data-ai-prompt="rank plan">🎯 Rank #1</button>
           <button type="button" data-ai-prompt="link architecture">🔗 Linking</button>
@@ -292,12 +279,12 @@
       if (lastProjects.length > 0) {
         loadSeoBrief(lastProjects[0], false);
       } else {
-        panel.querySelector(".aiAdvisorText").innerHTML =
-          "<p>No keyword projects found. Add keywords in Rank Defense to start SEO tracking.</p>";
+        const ans = panel.querySelector("[data-ai-answer]");
+        if (ans) ans.textContent = "No keyword projects found. Add keywords in Rank Defense to start SEO tracking.";
       }
     } catch (err) {
-      const textEl = panel.querySelector(".aiAdvisorText");
-      if (textEl) textEl.innerHTML = `<p>Could not load projects: ${escapeHtml(String(err.message || err))}</p>`;
+      const ans = panel.querySelector("[data-ai-answer]");
+      if (ans) ans.textContent = `Could not load projects: ${String(err.message || err)}`;
     }
   }
 
@@ -314,8 +301,8 @@
       renderBrief(data);
       startKeywordTicker();
     } catch (err) {
-      const textEl = panel.querySelector(".aiAdvisorText");
-      if (textEl) textEl.innerHTML = `<p>SEO data unavailable: ${escapeHtml(String(err.message || err))}</p>`;
+      const ans = panel.querySelector("[data-ai-answer]");
+      if (ans) ans.textContent = `SEO data unavailable: ${String(err.message || err)}`;
     } finally {
       if (refresh) refresh.textContent = "⟳ Refresh";
     }
@@ -338,32 +325,6 @@
     panel.querySelector("[data-ai-pool]").textContent = domains.length ? `${working.length}/${domains.length}` : "-";
     panel.querySelector("[data-ai-redirects]").textContent = redirect_issues.length;
 
-    const tier = seo_score >= 80 ? "STRONG" : seo_score >= 55 ? "WATCH" : seo_score > 0 ? "RISK" : "NEW";
-    const summaryParts = [
-      `${project}: ${tier} SEO profile (score ${seo_score}/100).`,
-      `${keywords.length} keyword${keywords.length !== 1 ? "s" : ""} tracked.`,
-      avgPos ? `Avg rank: #${avgPos}.` : "No ranking data yet — run a keyword scan.",
-      `Pool: ${working.length}/${domains.length} healthy domains.`,
-      redirect_issues.length ? `⚠️ ${redirect_issues.length} redirect issue(s) detected.` : "✅ No redirect issues."
-    ];
-    panel.querySelector(".aiAdvisorText").innerHTML = lineHtml(summaryParts.join(" "));
-
-    const kwLines = keywords
-      .slice(0, 6)
-      .map(k => {
-        const best = k.domains.filter(d => d.position > 0).sort((a, b) => a.position - b.position)[0];
-        return best ? `${k.keyword} → #${best.position}` : `${k.keyword} (not ranked)`;
-      })
-      .join(", ");
-    const kwListEl = panel.querySelector("[data-ai-keyword-list]");
-    if (kwListEl) kwListEl.textContent = kwLines || "-";
-
-    const redirEl = panel.querySelector("[data-ai-redirected-list]");
-    if (redirEl) {
-      redirEl.textContent = redirect_issues.length
-        ? redirect_issues.slice(0, 5).map(r => r.domain).join(", ")
-        : "✅ None detected";
-    }
   }
 
   function startKeywordTicker() {

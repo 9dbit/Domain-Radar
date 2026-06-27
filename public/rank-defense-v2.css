@@ -19,7 +19,12 @@ button:not(.navActive){background:#2f3136;border:0;color:#f9fafb;border-radius:1
 .submitBtn,.primaryBtn,button.primary,.toolbar button:nth-child(2){background:#20d46b;color:#06100a}
 .toolbar button,.buttonLink{min-height:40px;padding:0 14px}
 
-.inputGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.inputGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.inputGrid input,.inputGrid select,.inputGrid textarea{width:100%;box-sizing:border-box}
+.modeInput{grid-column:1}.projectSelect{grid-column:2}.projectNew{grid-column:2}
+.keywordInput{grid-column:1}.targetInput{grid-column:2}
+.singleDomain,.domainInput,.submitArea{grid-column:1/-1}
+.submitArea{display:flex;justify-content:flex-end}
 .fieldLabel{color:#9ca3af;font-size:10px;letter-spacing:.07em}
 
 .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
@@ -68,7 +73,7 @@ th,td{border-color:rgba(255,255,255,.07);padding:10px;color:#d1d5db}
 @media (max-width:1180px) {
   .inputGrid,.cols{grid-template-columns:1fr}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .modeInput,.projectSelect,.projectNew,.keywordInput,.singleDomain,.domainInput,.targetInput,.submitArea{grid-column:auto}
+  .modeInput,.projectSelect,.projectNew,.keywordInput,.singleDomain,.domainInput,.targetInput,.submitArea{grid-column:1/-1}
   .submitArea{justify-content:stretch}
   .submitBtn,.primaryBtn{width:100%}
   .kwHead{grid-template-columns:1fr}
