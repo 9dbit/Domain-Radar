@@ -169,7 +169,7 @@
   .aiAdvisorToggle { right: 14px; bottom: 96px; z-index: 150; width: 62px; height: 62px; }
   /* Mobile table: card layout */
   .panel:has(table) { overflow: hidden; }
-  .panel table { display: block; width: 100%; max-width: 100%; }
+  .panel table { display: block; width: 100%; max-width: 100%; min-width: 0; }
   .panel thead { display: none; }
   .panel tbody { display: grid; gap: 10px; width: 100%; }
   .panel tbody tr { display: block; width: 100%; background: #202124; border: 1px solid #303136; border-radius: 16px; padding: 12px; overflow: hidden; }
