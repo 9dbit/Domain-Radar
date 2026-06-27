@@ -84,54 +84,66 @@
       <button class="aiAdvisorToggle" type="button" data-ai-toggle>✦ AI</button>
       <div class="aiBackdrop" data-ai-backdrop></div>
       <aside id="${PANEL_ID}" class="aiAdvisorSidebar">
+
         <div class="aiSideHead">
-          <div>
+          <div class="aiSideHeadInner">
             <span class="aiAdvisorSpark">✦</span>
-            <b>Domain Radar AI</b>
-            <small>Command assistant</small>
+            <div>
+              <b>Domain Radar AI</b>
+              <small>Intelligent domain advisor</small>
+            </div>
           </div>
-          <button type="button" data-ai-collapse>×</button>
+          <button class="aiCloseBtn" type="button" data-ai-collapse aria-label="Close">✕</button>
+        </div>
+
+        <div class="aiMetricMini">
+          <div class="aiMetricCard aiMetricCard--cyan"><b data-ai-total>-</b><span>Total</span></div>
+          <div class="aiMetricCard aiMetricCard--amber"><b data-ai-warning>-</b><span>Warn</span></div>
+          <div class="aiMetricCard aiMetricCard--red"><b data-ai-blocked>-</b><span>Block</span></div>
+          <div class="aiMetricCard aiMetricCard--purple"><b data-ai-redirected>-</b><span>Redir</span></div>
         </div>
 
         <div class="aiScannerBox">
           <div class="aiRadar"><i></i><span></span></div>
           <div class="aiScanInfo">
-            <b data-scan-title>Scanning whitelisted domains</b>
-            <small data-scan-domain>Preparing scanner...</small>
+            <b data-scan-title>Scanning domains</b>
+            <small data-scan-domain>Initializing...</small>
             <div class="aiScanBar"><i data-scan-bar></i></div>
           </div>
-        </div>
-
-        <div class="aiMetricMini">
-          <span><b data-ai-total>-</b>Total</span>
-          <span><b data-ai-warning>-</b>Warn</span>
-          <span><b data-ai-blocked>-</b>Block</span>
-          <span><b data-ai-redirected>-</b>Redirect</span>
         </div>
 
         <div class="aiAdvisorText"><p>Loading AI Advisor...</p></div>
 
         <div class="aiSamples">
-          <div><b>Blocked</b><small data-ai-blocked-list>-</small></div>
-          <div><b>Blocked / Redirected</b><small data-ai-redirected-list>-</small></div>
+          <div class="aiSampleCard">
+            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--red"></span>Blocked</div>
+            <div class="aiSampleList" data-ai-blocked-list>-</div>
+          </div>
+          <div class="aiSampleCard">
+            <div class="aiSampleLabel"><span class="aiSampleDot aiSampleDot--purple"></span>Redirected</div>
+            <div class="aiSampleList" data-ai-redirected-list>-</div>
+          </div>
         </div>
 
         <div class="aiPromptChips">
-          <button type="button" data-ai-prompt="urgent today">Urgent Today</button>
-          <button type="button" data-ai-prompt="blocked analysis">Blocked Analysis</button>
-          <button type="button" data-ai-prompt="warning cleanup">Warning Cleanup</button>
-          <button type="button" data-ai-prompt="safe domains">Safe Domains</button>
-          <button type="button" data-ai-prompt="redirect audit">Redirect Audit</button>
+          <button type="button" data-ai-prompt="urgent today">🔥 Urgent</button>
+          <button type="button" data-ai-prompt="blocked analysis">🚫 Blocked</button>
+          <button type="button" data-ai-prompt="warning cleanup">⚡ Warning</button>
+          <button type="button" data-ai-prompt="safe domains">✅ Safe</button>
+          <button type="button" data-ai-prompt="redirect audit">↩ Redirects</button>
+        </div>
+
+        <div class="aiAnswerBox">
+          <div class="aiAnswerLabel">AI Response</div>
+          <p data-ai-answer>Ask a question or use a quick prompt above.</p>
         </div>
 
         <form class="aiAskBox" data-ai-form>
-          <input data-ai-input placeholder="Ask AI about domains..." />
-          <button type="submit">Ask</button>
+          <input data-ai-input placeholder="Ask about your domains..." />
+          <button type="submit">→</button>
         </form>
 
-        <div class="aiAnswerBox"><b>AI Answer</b><p data-ai-answer>Ask a question or use quick prompts.</p></div>
-
-        <button class="smallBtn aiRefreshFull" type="button" data-ai-refresh>Refresh AI</button>
+        <button class="smallBtn aiRefreshFull" type="button" data-ai-refresh>⟳ Refresh</button>
       </aside>`;
   }
 
