@@ -174,7 +174,7 @@
   .aiPromptChips { display: grid; grid-template-columns: 1fr 1fr; }
   .aiPromptChips button { min-height: 36px; }
   .aiRefreshFull { display: none; }
-  .aiAdvisorToggle { right: 14px; bottom: 96px; z-index: 150; width: 62px; height: 62px; }
+  .aiAdvisorToggle { right: 18px; bottom: 18px; z-index: 150; width: 62px; height: 62px; }
   /* Mobile table: card layout */
   .panel:has(table) { overflow: hidden; }
   .panel table { display: block; width: 100%; max-width: 100%; min-width: 0; }
@@ -205,7 +205,7 @@
 }
 @media (max-width: 640px) {
   body { padding-bottom: 92px; }
-  .aiAdvisorToggle { bottom: 92px; }
+  .aiAdvisorToggle { right: 18px; bottom: 18px; }
 }
 @media (max-width: 420px) {
   .panel tbody td { grid-template-columns: 82px minmax(0,1fr); }
