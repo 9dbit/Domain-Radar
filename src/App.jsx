@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   RefreshCw, ShieldAlert, CheckCircle, AlertTriangle, Ban, Lock, LogOut,
   Settings, Send, Download, Trash2, Pencil, Power, Search, Radio, Bell,
-  FolderKanban, BarChart3, Plus, Globe2, Server, Sparkles, Network
+  FolderKanban, BarChart3, Plus, Globe2, Server, Sparkles, Network, Shield
 } from "lucide-react";
 import "./style.css";
 import "./dashboard-patches.css";
@@ -50,7 +50,18 @@ function Login({ onLogin }) {
 }
 
 function Dashboard({ onLogout }) {
-  const [page, setPage] = useState("dashboard");
+  function hashToPage(hash) {
+    if (hash === "#projects") return "projects";
+    if (hash === "#rank") return "rank";
+    if (hash === "#settings") return "settings";
+    return "dashboard";
+  }
+  const [page, setPage] = useState(() => hashToPage(window.location.hash));
+  useEffect(() => {
+    const onHash = () => setPage(hashToPage(window.location.hash));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [tab, setTab] = useState("system");
   const [overview, setOverview] = useState({});
   const [domains, setDomains] = useState([]);
@@ -110,7 +121,7 @@ function Dashboard({ onLogout }) {
   async function delRank(k) { if (confirm(`Delete keyword ${k.keyword}?`)) { await api(`/api/rank/keywords/${k.id}`, { method: "DELETE" }); load(); } }
   async function logout() { await api("/api/auth/logout", { method: "POST" }); onLogout(); }
   function csv(path) { window.open(path, "_blank"); }
-  function renderNav() { return <aside><h1>Domain Radar</h1><p>Command Center</p><button className={page === "dashboard" ? "navActive" : ""} onClick={() => setPage("dashboard")}><Globe2 size={16}/> Dashboard</button><button className={page === "projects" ? "navActive" : ""} onClick={() => setPage("projects")}><FolderKanban size={16}/> Projects</button><button className={page === "rank" ? "navActive" : ""} onClick={() => setPage("rank")}><BarChart3 size={16}/> Google Rank</button><button className={page === "settings" ? "navActive" : ""} onClick={() => setPage("settings")}><Settings size={16}/> Settings</button><button onClick={manual}><RefreshCw size={16}/> Manual Check All</button><button onClick={() => setAuto(!auto)}><Radio size={16}/> Auto: {auto ? "ON" : "OFF"}</button><button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>{notice ? <p className="sideNotice">{notice}</p> : null}</aside>; }
+  function renderNav() { return <aside><h1>Domain Radar</h1><p>Command Center</p><button className={page === "dashboard" ? "navActive" : ""} onClick={() => setPage("dashboard")}><Globe2 size={16}/> Dashboard</button><button className={page === "projects" ? "navActive" : ""} onClick={() => setPage("projects")}><FolderKanban size={16}/> Projects</button><button className={page === "rank" ? "navActive" : ""} onClick={() => setPage("rank")}><BarChart3 size={16}/> Google Rank</button><a href="/rank-defense.html"><Shield size={16}/> Defense Center</a><button className={page === "settings" ? "navActive" : ""} onClick={() => setPage("settings")}><Settings size={16}/> Settings</button><button onClick={manual}><RefreshCw size={16}/> Manual Check All</button><button onClick={() => setAuto(!auto)}><Radio size={16}/> Auto: {auto ? "ON" : "OFF"}</button><button className="ghostBtn" onClick={logout}><LogOut size={16}/> Logout</button>{notice ? <p className="sideNotice">{notice}</p> : null}</aside>; }
   function renderCards() { return <section className="cards"><div className="card"><ShieldAlert/><b>{overview.total || 0}</b><span>Total</span></div><div className="card"><CheckCircle/><b>{overview.working || 0}</b><span>Working</span></div><div className="card"><AlertTriangle/><b>{overview.warning || 0}</b><span>Warning</span></div><div className="card"><Ban/><b>{overview.blocked || 0}</b><span>Blocked</span></div></section>; }
   function renderAlerts() { return <section className="panel alertPanel"><div className="panelHead"><h2><Bell size={20}/> Alert Center</h2><span className="muted">Latest 100 alerts</span></div><div className="alertList">{alerts.length ? alerts.slice(0, 6).map((a) => <div className="alertItem" key={a.id}><Badge status={a.new_status}/><div><b>{a.domain || "Deleted domain"}</b><small>{a.old_status} → {a.new_status} · {new Date(a.created_at).toLocaleString()}</small></div></div>) : <p className="muted">Belum ada alert.</p>}</div></section>; }
   function emptyDomainMessage() { if (status === "blocked") return { title: "No Blocked domain", body: "Semua domain belum ada yang berstatus blocked untuk filter ini." }; if (status === "warning") return { title: "No Warning domain", body: "Tidak ada domain warning untuk filter ini." }; if (status === "working") return { title: "No Normal domain", body: "Tidak ada domain normal untuk filter ini." }; return { title: "No domain found", body: "Coba ubah search, status filter, atau project filter." }; }

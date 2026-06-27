@@ -4,24 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rank Defense Center</title>
+  <link rel="stylesheet" href="/sidebar.css" />
   <link rel="stylesheet" href="/rank-defense-v2.css" />
-  <link rel="stylesheet" href="/rank-defense-layout-fix.css" />
-  <link rel="stylesheet" href="/rank-defense-sidebar-match.css" />
-  <link rel="stylesheet" href="/rank-sidebar-unified.css" />
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
 <body>
 <aside class="sideNav">
   <h1>Domain Radar</h1>
   <p>Command Center</p>
-  <a class="buttonLink" href="/"><span class="rankSideIcon">☷</span><span>Dashboard</span></a>
-  <a class="buttonLink" href="/#projects"><span class="rankSideIcon">▣</span><span>Projects</span></a>
-  <a class="buttonLink navActive" href="/rank-defense.html"><span class="rankSideIcon">▥</span><span>Google Rank</span></a>
-  <a class="buttonLink" href="/rank-defense.html"><span class="rankSideIcon">🛡</span><span>Defense Center</span></a>
-  <a class="buttonLink" href="/#analytics"><span class="rankSideIcon">✦</span><span>Analytics</span></a>
-  <a class="buttonLink" href="/#settings"><span class="rankSideIcon">⚙</span><span>Settings</span></a>
-  <button onclick="checkAll()"><span class="rankSideIcon">↻</span><span>Manual Check All</span></button>
-  <button type="button"><span class="rankSideIcon">◌</span><span>Auto: ON</span></button>
-  <a class="buttonLink" href="/api/auth/logout"><span class="rankSideIcon">↪</span><span>Logout</span></a>
+  <a class="buttonLink" href="/"><i data-lucide="layout-dashboard" width="16" height="16"></i><span>Dashboard</span></a>
+  <a class="buttonLink" href="/#projects"><i data-lucide="folder-kanban" width="16" height="16"></i><span>Projects</span></a>
+  <a class="buttonLink" href="/#rank"><i data-lucide="bar-chart-3" width="16" height="16"></i><span>Google Rank</span></a>
+  <a class="buttonLink navActive" href="/rank-defense.html"><i data-lucide="shield" width="16" height="16"></i><span>Defense Center</span></a>
+  <a class="buttonLink" href="/#settings"><i data-lucide="settings" width="16" height="16"></i><span>Settings</span></a>
+  <button onclick="checkAll()"><i data-lucide="refresh-cw" width="16" height="16"></i><span>Manual Check All</span></button>
+  <a class="buttonLink" href="/api/auth/logout"><i data-lucide="log-out" width="16" height="16"></i><span>Logout</span></a>
 </aside>
 
 <main class="contentMain">
@@ -89,6 +86,7 @@ function renderResultRow(r){ return `<div class="resultRow"><div class="rankBox"
 function render(){ $('totalKw').textContent=groups.length; $('totalDomains').textContent=groups.reduce((a,g)=>a+(g.domains?.length||0),0); $('foundDomains').textContent=groups.reduce((a,g)=>a+(g.domains||[]).filter(d=>d.last_position).length,0); $('suspiciousTotal').textContent=results.filter(r=>r.classification==='suspicious').length; fillProjectSelect(); $('groups').innerHTML = groups.map(g => { const susp=groupResults(g).filter(r=>r.classification==='suspicious'); const nonWhite=groupResults(g).filter(r=>r.classification!=='whitelisted'); return `<article class="kw"><div class="kwHead"><div><h2>${esc(g.keyword)}</h2><div class="muted">${esc(g.project_name||'-')} · ${g.domain_count||0} whitelist domain · Last: ${g.last_checked_at?new Date(g.last_checked_at).toLocaleString():'never'}</div></div><div>${badge('warn',`Suspicious ${susp.length}`)}</div><div class="toolbar"><button onclick="checkGroup(${g.id})">Check</button><button onclick="delGroup(${g.id})">Delete</button></div></div><div class="cols"><div class="sub whitelistPane"><h3>Whitelisted Domains</h3><div class="tableWrap"><table><thead><tr><th style="width:48%">Domain</th><th>Status</th><th>Page</th><th>Rank</th><th>URL</th></tr></thead><tbody>${(g.domains||[]).map(d=>`<tr><td class="domain">${esc(d.domain)}</td><td>${badge(d.last_status==='found'?'found':'warn',d.last_status||'pending')}</td><td>${rankMetric(d.last_page,'PAGE',Number(d.last_page)===1)}</td><td>${rankMetric(d.last_position,'RANK',Number(d.last_page)===1)}</td><td>${d.last_matched_url?`<a target="_blank" href="${esc(d.last_matched_url)}">open</a>`:'-'}</td></tr>`).join('')}</tbody></table></div></div><div class="sub suspiciousPane"><h3>Non-whitelist / Suspicious Results</h3>${nonWhite.length?`<div class="resultList">${nonWhite.map(renderResultRow).join('')}</div>`:`<div class="emptyBox">No non-whitelist result loaded yet.</div>`}</div></div></article>`; }).join(''); }
 async function loadAll(){ groups = await api('/api/rank/keywords'); results = await api('/api/rank/results'); try{ projects = await api('/api/projects'); }catch(e){ projects = []; } render(); }
 loadAll().catch(e=>notice(e.message));
+lucide.createIcons();
 </script>
 </body>
 </html>

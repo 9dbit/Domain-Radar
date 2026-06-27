@@ -1,0 +1,164 @@
+/* ── Shared design tokens (for rank-defense.html) ── */
+:root {
+  --bg: #070b10;
+  --side: #0d1117;
+  --panel: #101720;
+  --panel2: #0d131b;
+  --line: #202a35;
+  --line2: #263342;
+  --text: #edf6ff;
+  --muted: #8b98a8;
+  --green: #00d45a;
+  --green2: #00f06a;
+  --greenSoft: rgba(0,212,90,.16);
+  --red: #ff4d4f;
+  --yellow: #ffb020;
+}
+
+/* ── Sidebar layout — shared between React app (aside) and Defense Center (.sideNav) ── */
+aside, .sideNav {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+  background: var(--side, #0d1117);
+  border-right: 1px solid var(--line, #202a35);
+  padding: 20px 16px;
+  box-sizing: border-box;
+  z-index: 80;
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100vh;
+}
+
+aside h1, .sideNav h1 {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -.04em;
+  color: var(--text, #edf6ff);
+  margin: 0 0 4px;
+  line-height: 1;
+}
+aside > p, .sideNav > p {
+  font-size: 12px;
+  color: var(--muted, #8b98a8);
+  margin: 0 0 18px;
+  line-height: 1.35;
+}
+
+/* ── Nav items ── */
+aside button, aside a, .sideNav a, .sideNav button {
+  height: 40px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #8b98a8);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  margin-bottom: 4px;
+  box-shadow: none;
+  letter-spacing: -.01em;
+  transition: background .15s, color .15s;
+  min-height: 40px;
+}
+aside button:hover, aside a:hover, .sideNav a:hover, .sideNav button:hover {
+  background: rgba(255,255,255,.07);
+  color: var(--text, #edf6ff);
+}
+
+/* Active state — green left-border highlight */
+aside button.navActive, aside a.navActive, .sideNav .navActive {
+  background: rgba(0,212,90,.1);
+  color: var(--green, #00d45a);
+  box-shadow: inset 3px 0 0 var(--green, #00d45a);
+  font-weight: 800;
+}
+
+/* Icon alignment */
+.rankSideIcon {
+  display: inline-flex;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ── Main content offset (rank-defense.html only; React app uses .app grid) ── */
+.contentMain {
+  margin-left: 240px;
+  box-sizing: border-box;
+}
+
+/* ── Responsive: icon-only sidebar at medium screens ── */
+@media (max-width: 980px) {
+  aside, .sideNav {
+    width: 64px;
+    min-width: 64px;
+    max-width: 64px;
+    padding: 16px 10px;
+  }
+  aside h1, .sideNav h1 { font-size: 0; margin: 0 0 8px; }
+  aside h1::after, .sideNav h1::after { content: "DR"; font-size: 14px; color: var(--text, #edf6ff); }
+  aside > p, .sideNav > p { display: none; }
+  aside button, aside a, .sideNav a, .sideNav button {
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+    gap: 0;
+    letter-spacing: 0;
+  }
+  aside button svg, aside a svg { width: 18px; height: 18px; }
+  .rankSideIcon { font-size: 16px; }
+  aside .sideNotice, .sideNotice { display: none; }
+  .contentMain {
+    margin-left: 64px;
+  }
+}
+
+/* ── Responsive: horizontal nav bar at small screens ── */
+@media (max-width: 640px) {
+  aside, .sideNav {
+    position: sticky;
+    top: 0;
+    height: auto;
+    min-height: 0;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--line, #202a35);
+  }
+  aside h1, .sideNav h1, aside > p, .sideNav > p, aside .sideNotice, .sideNotice { display: none; }
+  aside button, aside a, .sideNav a, .sideNav button {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    margin: 0 4px 0 0;
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+    gap: 0;
+  }
+  .contentMain {
+    margin-left: 0;
+  }
+}
