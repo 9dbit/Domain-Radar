@@ -82,6 +82,7 @@
   function panelShell() {
     return `
       <button class="aiAdvisorToggle" type="button" data-ai-toggle>✦ AI</button>
+      <div class="aiBackdrop" data-ai-backdrop></div>
       <aside id="${PANEL_ID}" class="aiAdvisorSidebar">
         <div class="aiSideHead">
           <div>
@@ -142,12 +143,15 @@
 
     const panel = document.getElementById(PANEL_ID);
     const toggle = document.querySelector("[data-ai-toggle]");
+    const backdrop = document.querySelector("[data-ai-backdrop]");
     const collapse = panel.querySelector("[data-ai-collapse]");
     const refresh = panel.querySelector("[data-ai-refresh]");
     const form = panel.querySelector("[data-ai-form]");
 
+    const closeDrawer = () => document.body.classList.remove("aiSidebarOpen");
     toggle?.addEventListener("click", () => document.body.classList.toggle("aiSidebarOpen"));
-    collapse?.addEventListener("click", () => document.body.classList.remove("aiSidebarOpen"));
+    backdrop?.addEventListener("click", closeDrawer);
+    collapse?.addEventListener("click", closeDrawer);
     refresh?.addEventListener("click", () => loadAiSummary(true));
     panel.querySelectorAll("[data-ai-prompt]").forEach((btn) => {
       btn.addEventListener("click", () => askAi(btn.getAttribute("data-ai-prompt") || ""));

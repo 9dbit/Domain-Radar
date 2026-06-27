@@ -65,6 +65,14 @@
 .aiSidebarOpen .aiAdvisorSidebar { transform: translateX(0); }
 .aiAdvisorSidebar * { max-width: 100%; box-sizing: border-box; }
 
+.aiBackdrop {
+  position: fixed; inset: 0; z-index: 115;
+  background: rgba(0,0,0,.45);
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease;
+}
+.aiSidebarOpen .aiBackdrop { opacity: 1; pointer-events: auto; }
+
 .aiSideHead { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 0; }
 .aiSideHead > div { display: grid; grid-template-columns: 28px 1fr; column-gap: 8px; align-items: center; }
 .aiSideHead b { color: #f8fafc; font-size: 14px; }
@@ -161,7 +169,7 @@
   .analyticsGridTop { grid-template-columns: 1fr 1fr; }
   .analyticsTwoCol { grid-template-columns: 1fr; }
   .analyticsSamples, .projectSeoGrid { grid-template-columns: 1fr; }
-  .aiAdvisorSidebar { left: 8px; right: 8px; top: 8px; bottom: 8px; width: auto; max-width: none; }
+  .aiAdvisorSidebar { right: 0; left: auto; top: 0; bottom: 0; width: min(340px, 100vw); max-width: none; border-radius: 22px 0 0 22px; }
   .aiAnswerBox { max-height: 140px; }
   .aiPromptChips { display: grid; grid-template-columns: 1fr 1fr; }
   .aiPromptChips button { min-height: 36px; }
