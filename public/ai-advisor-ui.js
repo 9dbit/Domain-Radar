@@ -265,10 +265,16 @@
   async function loadProjects() {
     const panel = document.getElementById(PANEL_ID);
     if (!panel) return;
+    setLoadingState(panel, true);
+    const ans = panel.querySelector("[data-ai-answer]");
+    if (ans) ans.textContent = "Loading projects…";
+    let delegatedToSeoBrief = false;
     try {
       const res = await fetch("/api/ai/seo-brief", { credentials: "include" });
+      if (res.status === 401) { setAuthFailState(panel); return; }
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to load projects");
+      clearAnswerState(panel);
       lastProjects = data.projects_list || [];
       const select = panel.querySelector("[data-ai-project]");
       if (select) {
@@ -277,14 +283,16 @@
           : `<option value="">No projects found</option>`;
       }
       if (lastProjects.length > 0) {
+        delegatedToSeoBrief = true;
         loadSeoBrief(lastProjects[0], false);
       } else {
-        const ans = panel.querySelector("[data-ai-answer]");
         if (ans) ans.textContent = "No keyword projects found. Add keywords in Rank Defense to start SEO tracking.";
       }
     } catch (err) {
-      const ans = panel.querySelector("[data-ai-answer]");
+      clearAnswerState(panel);
       if (ans) ans.textContent = `Could not load projects: ${String(err.message || err)}`;
+    } finally {
+      if (!delegatedToSeoBrief) setLoadingState(panel, false);
     }
   }
 
@@ -293,17 +301,26 @@
     if (!panel) return;
     const refresh = panel.querySelector("[data-ai-refresh]");
     if (refresh) refresh.textContent = manual ? "Thinking..." : "⟳ Refresh";
+    setLoadingState(panel, true);
     try {
       const res = await fetch(`/api/ai/seo-brief?project=${encodeURIComponent(projectName)}`, { credentials: "include" });
+      if (res.status === 401) { setAuthFailState(panel); return; }
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "SEO brief failed");
+      clearAnswerState(panel);
       lastBrief = data;
       renderBrief(data);
       startKeywordTicker();
+      const ans = panel.querySelector("[data-ai-answer]");
+      if (ans && ans.textContent === "Loading projects…") {
+        ans.textContent = "Ask a question or tap a quick prompt above.";
+      }
     } catch (err) {
+      clearAnswerState(panel);
       const ans = panel.querySelector("[data-ai-answer]");
       if (ans) ans.textContent = `SEO data unavailable: ${String(err.message || err)}`;
     } finally {
+      setLoadingState(panel, false);
       if (refresh) refresh.textContent = "⟳ Refresh";
     }
   }
@@ -347,6 +364,41 @@
         `Tracking ${keywords.length} keyword${keywords.length !== 1 ? "s" : ""}`;
       scanIndex += 1;
     }, 1200);
+  }
+
+  function setLoadingState(panel, isLoading) {
+    if (!panel) return;
+    panel.querySelectorAll(".aiMetricCard").forEach(card => {
+      card.classList.toggle("aiMetricCard--loading", isLoading);
+    });
+    panel.querySelectorAll("[data-ai-prompt]").forEach(btn => {
+      btn.disabled = isLoading;
+    });
+    const input = panel.querySelector("[data-ai-input]");
+    const submit = panel.querySelector("[data-ai-form] button[type='submit']");
+    if (input) input.disabled = isLoading;
+    if (submit) submit.disabled = isLoading;
+    const answerBox = panel.querySelector(".aiAnswerBox");
+    if (answerBox) answerBox.classList.toggle("aiAnswerBox--loading", isLoading);
+  }
+
+  function setAuthFailState(panel) {
+    if (!panel) return;
+    const answerBox = panel.querySelector(".aiAnswerBox");
+    if (answerBox) {
+      answerBox.classList.remove("aiAnswerBox--loading");
+      answerBox.classList.add("aiAnswerBox--authfail");
+    }
+    const ans = panel.querySelector("[data-ai-answer]");
+    if (ans) ans.textContent = "Please log in to use AI Advisor.";
+  }
+
+  function clearAnswerState(panel) {
+    if (!panel) return;
+    const answerBox = panel.querySelector(".aiAnswerBox");
+    if (answerBox) {
+      answerBox.classList.remove("aiAnswerBox--loading", "aiAnswerBox--authfail");
+    }
   }
 
   function askAi(question) {

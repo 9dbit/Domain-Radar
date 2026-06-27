@@ -179,6 +179,39 @@
   color: #67e8f9; box-shadow: 0 0 12px rgba(34,211,238,.12);
 }
 
+/* AI loading skeleton shimmer */
+@keyframes aiSkeletonShimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.aiMetricCard--loading b {
+  color: transparent !important;
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,.05) 25%,
+    rgba(255,255,255,.14) 50%,
+    rgba(255,255,255,.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: aiSkeletonShimmer 1.5s ease infinite;
+  min-width: 28px;
+  display: inline-block;
+}
+.aiPromptChips button:disabled,
+.aiAskBox input:disabled,
+.aiAskBox button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.aiAnswerBox--loading [data-ai-answer] {
+  color: #475569;
+  font-style: italic;
+}
+.aiAnswerBox--authfail [data-ai-answer] {
+  color: #fca5a5;
+}
+
 /* Answer bubble */
 .aiAnswerBox {
   flex: 1 1 auto; min-height: 120px; max-height: 240px; overflow-y: auto;
