@@ -7,17 +7,21 @@
   <link rel="stylesheet" href="/rank-defense-v2.css" />
   <link rel="stylesheet" href="/rank-defense-layout-fix.css" />
   <link rel="stylesheet" href="/rank-defense-sidebar-match.css" />
+  <link rel="stylesheet" href="/rank-sidebar-unified.css" />
 </head>
 <body>
 <aside class="sideNav">
   <h1>Domain Radar</h1>
   <p>Command Center</p>
-  <a class="buttonLink" href="/">◉ Dashboard</a>
-  <a class="buttonLink" href="/#projects">▣ Projects</a>
-  <a class="buttonLink navActive" href="/rank-defense.html">▥ Google Rank</a>
-  <a class="buttonLink" href="/#settings">⚙ Settings</a>
-  <button onclick="checkAll()">↻ Check All Rank</button>
-  <div class="sideNotice" id="sideNotice">Rank Defense active</div>
+  <a class="buttonLink" href="/"><span class="rankSideIcon">☷</span><span>Dashboard</span></a>
+  <a class="buttonLink" href="/#projects"><span class="rankSideIcon">▣</span><span>Projects</span></a>
+  <a class="buttonLink navActive" href="/rank-defense.html"><span class="rankSideIcon">▥</span><span>Google Rank</span></a>
+  <a class="buttonLink" href="/rank-defense.html"><span class="rankSideIcon">🛡</span><span>Defense Center</span></a>
+  <a class="buttonLink" href="/#analytics"><span class="rankSideIcon">✦</span><span>Analytics</span></a>
+  <a class="buttonLink" href="/#settings"><span class="rankSideIcon">⚙</span><span>Settings</span></a>
+  <button onclick="checkAll()"><span class="rankSideIcon">↻</span><span>Manual Check All</span></button>
+  <button type="button"><span class="rankSideIcon">◌</span><span>Auto: ON</span></button>
+  <a class="buttonLink" href="/api/auth/logout"><span class="rankSideIcon">↪</span><span>Logout</span></a>
 </aside>
 
 <main class="contentMain">
@@ -65,7 +69,7 @@ function esc(v){return String(v ?? '').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'
 function badge(type, text){ const cls = type === 'whitelisted' || type === 'found' ? 'ok' : type === 'external_safe' ? 'ext' : type === 'suspicious' ? 'bad' : 'warn'; return `<span class="pill ${cls}">${esc(text || type)}</span>`; }
 function rankMetric(value,label,isPageOne){ if(!value) return '<span class="rankMetric empty">-</span>'; return `<span class="rankMetric ${isPageOne ? 'trophy' : ''}">${isPageOne ? '<span class="trophyIcon">🏆</span>' : ''}<small>${label}</small><b>${esc(value)}</b></span>`; }
 async function api(path,opt={}){ const res=await fetch(path,{credentials:'include',headers:{'Content-Type':'application/json'},...opt}); const data=await res.json().catch(()=>({})); if(!res.ok) throw new Error(data.error||'Request failed'); return data; }
-function notice(msg){ $('notice').textContent = msg || ''; const side = $('sideNotice'); if(side && msg) side.textContent = msg; }
+function notice(msg){ $('notice').textContent = msg || ''; }
 function toggleProjectMode(){ const mode=$('projectMode').value; $('projectSelectWrap').style.display = mode === 'existing' ? '' : 'none'; $('projectNewWrap').style.display = mode === 'new' ? '' : 'none'; }
 function selectedProject(){ return $('projectMode').value === 'new' ? $('projectNew').value.trim() : $('projectSelect').value.trim(); }
 function domainPayload(){ return [$('singleDomain').value, $('domains').value].filter(Boolean).join('\n'); }
