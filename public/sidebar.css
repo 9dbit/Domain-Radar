@@ -98,7 +98,9 @@ aside button.navActive, aside a.navActive, .sideNav .navActive {
 /* ── Main content offset (rank-defense.html only; React app uses .app grid) ── */
 .contentMain {
   margin-left: 240px;
+  padding: 24px 28px;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* ── Responsive: icon-only sidebar at medium screens ── */
@@ -160,5 +162,6 @@ aside button.navActive, aside a.navActive, .sideNav .navActive {
   }
   .contentMain {
     margin-left: 0;
+    padding: 10px;
   }
 }
