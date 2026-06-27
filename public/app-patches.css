@@ -252,7 +252,7 @@
 /* ── Responsive breakpoints ── */
 /* On large desktop: tuck AI button into right scrollbar gutter so it never sits on content columns */
 @media (min-width: 1024px) {
-  .aiAdvisorToggle { right: 16px; bottom: 24px; width: 60px; height: 60px; }
+  .aiAdvisorToggle { right: 20px; bottom: 24px; width: 60px; height: 60px; }
 }
 @media (max-width: 1280px) {
   .aiAdvisorSidebar { width: 292px; max-width: min(292px,calc(100vw - 20px)); }
