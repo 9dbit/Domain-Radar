@@ -26,7 +26,23 @@ a.domainCell:hover{text-decoration:underline}
 .domainCardBottom{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .domainCardMeta{display:flex;gap:6px;color:var(--muted);font-size:11px;flex:1;flex-wrap:wrap;line-height:1.3}
 .domainCardRow .actions{flex-shrink:0;flex-wrap:nowrap}
-@media(max-width:640px){.domainListWrap table{display:none}.domainCards{display:flex}.domainListWrap{overflow-x:unset}.projectHeaderGrid{cursor:pointer}}
+@media(max-width:640px){
+  .domainListWrap table{display:none}
+  .domainCards{display:flex;padding:0 2px}
+  .domainListWrap{overflow-x:unset;padding:0 6px}
+  .projectHeaderGrid{cursor:pointer}
+  .domainCardRow{padding:7px 9px;gap:4px}
+  .domainCardMain{gap:6px;min-width:0}
+  .domainCardMain .domainCell{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:700}
+  .domainCardMain>.muted{flex-shrink:0;white-space:nowrap}
+  .domainCardRow .badge{width:max-content;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;font-size:10px;padding:3px 6px}
+  .domainCardBottom{flex-direction:column;align-items:stretch;gap:5px}
+  .domainCardMeta{font-size:10px;gap:5px;flex-wrap:nowrap;overflow:hidden;color:var(--muted);line-height:1.3;min-width:0}
+  .domainCardMeta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:1;min-width:0}
+  .domainCardMeta span:first-child{flex-shrink:0;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .domainCardRow .actions{flex-shrink:0;flex-wrap:nowrap;display:flex;gap:5px;justify-content:flex-start}
+  .domainCardRow .actions .iconBtn{width:34px;height:34px;min-height:34px;padding:0;flex-shrink:0;border-radius:8px}
+}
 /* Compact node cards on mobile */
 @media(max-width:640px){.nodeStatusGrid{grid-template-columns:1fr}.nodeStatusCard{grid-template-columns:1fr auto auto;min-height:auto;padding:9px 10px;gap:4px 8px;align-items:center}.nodeTelemetryRow{display:none}.nodeMetaLine{display:none}.nodeStatusCard::after{display:none}.nodeStatusCard .smallBtn{grid-column:3;grid-row:1;width:auto;min-height:26px;padding:4px 9px;margin-top:0}.nodeTitleBlock{grid-column:1;grid-row:1}.healthBadge{grid-column:2;grid-row:1;align-self:center}.nodeTitleBlock b{font-size:12px}.nodeTitleBlock small{font-size:10px}}
 /* UI polish */
