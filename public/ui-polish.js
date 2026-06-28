@@ -1,17 +1,4 @@
 (() => {
-  function addNav() {
-    const side = document.querySelector('aside');
-    if (!side || side.querySelector('[data-analytics-nav]')) return;
-    const buttons = Array.from(side.querySelectorAll('button'));
-    const rank = buttons.find((b) => /google rank/i.test(b.textContent || ''));
-    if (!rank) return;
-
-    rank.insertAdjacentHTML('afterend', '<button data-analytics-nav type="button">✦ Analytics</button>');
-    side.querySelector('[data-analytics-nav]').onclick = () => showAnalytics();
-
-    buttons.forEach((b) => b.addEventListener('click', () => hideAnalytics()));
-  }
-
   function card(title, body) {
     return '<article class="analyticsCard"><h3>' + title + '</h3><div>' + body + '</div></article>';
   }
@@ -37,23 +24,10 @@
     page = document.createElement('section');
     page.id = 'analyticsPage';
     page.className = 'analyticsPage';
-    page.innerHTML = '<div class="analyticsHero"><div><b>✦ AI Analytics</b><p>Risk intelligence, reason grouping, and domain action plan.</p></div><button class="smallBtn" data-refresh-analytics>Refresh</button></div><div class="analyticsGridTop"><div><b data-total>-</b><span>Total</span></div><div><b data-normal>-</b><span>Normal</span></div><div><b data-warning>-</b><span>Warning</span></div><div><b data-blocked>-</b><span>Blocked</span></div></div><div class="analyticsBody"></div>';
+    page.innerHTML = '<div class="analyticsHero"><div><b>✦ Analytics</b><p>Risk intelligence, reason grouping, and domain action plan.</p></div><button class="smallBtn" data-refresh-analytics>Refresh</button></div><div class="analyticsGridTop"><div><b data-total>-</b><span>Total</span></div><div><b data-normal>-</b><span>Normal</span></div><div><b data-warning>-</b><span>Warning</span></div><div><b data-blocked>-</b><span>Blocked</span></div></div><div class="analyticsBody"></div>';
     main.prepend(page);
     page.querySelector('[data-refresh-analytics]').onclick = loadAnalytics;
     return page;
-  }
-
-  function showAnalytics() {
-    ensurePage();
-    document.body.classList.add('analyticsMode');
-    document.querySelectorAll('aside button').forEach((b) => b.classList.remove('navActive'));
-    document.querySelector('[data-analytics-nav]')?.classList.add('navActive');
-    loadAnalytics();
-  }
-
-  function hideAnalytics() {
-    document.body.classList.remove('analyticsMode');
-    document.querySelector('[data-analytics-nav]')?.classList.remove('navActive');
   }
 
   async function getJson(url) {
@@ -83,5 +57,6 @@
     }
   }
 
-  const timer = setInterval(() => { addNav(); ensurePage(); if (document.querySelector('[data-analytics-nav]')) clearInterval(timer); }, 500);
+  window._ensureAnalyticsPage = ensurePage;
+  window._loadAnalytics = loadAnalytics;
 })();
