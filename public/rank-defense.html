@@ -31,13 +31,14 @@
 <aside class="sideNav">
   <h1>Domain Radar</h1>
   <p>Command Center</p>
-  <a class="buttonLink" href="/"><i data-lucide="layout-dashboard" width="16" height="16"></i><span>Dashboard</span></a>
-  <a class="buttonLink" href="/#projects"><i data-lucide="folder-kanban" width="16" height="16"></i><span>Projects</span></a>
-  <a class="buttonLink" href="/#rank"><i data-lucide="bar-chart-3" width="16" height="16"></i><span>Google Rank</span></a>
-  <a class="buttonLink navActive" href="/rank-defense.html"><i data-lucide="shield" width="16" height="16"></i><span>Defense Center</span></a>
-  <a class="buttonLink" href="/#settings"><i data-lucide="settings" width="16" height="16"></i><span>Settings</span></a>
+  <a href="/"><i data-lucide="layout-dashboard" width="16" height="16"></i><span>Dashboard</span></a>
+  <a href="/#projects"><i data-lucide="folder-kanban" width="16" height="16"></i><span>Projects</span></a>
+  <a href="/#rank"><i data-lucide="bar-chart-3" width="16" height="16"></i><span>Google Rank</span></a>
+  <a class="navActive" href="/rank-defense.html"><i data-lucide="shield" width="16" height="16"></i><span>Defense Center</span></a>
+  <a href="/#settings"><i data-lucide="settings" width="16" height="16"></i><span>Settings</span></a>
   <button onclick="checkAll()"><i data-lucide="refresh-cw" width="16" height="16"></i><span>Manual Check All</span></button>
-  <a class="buttonLink" href="/api/auth/logout"><i data-lucide="log-out" width="16" height="16"></i><span>Logout</span></a>
+  <button id="sideAutoBtn" onclick="var a=(this.dataset.on=this.dataset.on==='1'?'0':'1')==='1';this.querySelector('span').textContent='Auto: '+(a?'ON':'OFF');" data-on="1"><i data-lucide="radio" width="16" height="16"></i><span>Auto: ON</span></button>
+  <a href="/api/auth/logout"><i data-lucide="log-out" width="16" height="16"></i><span>Logout</span></a>
 </aside>
 
 <main class="contentMain">
@@ -108,6 +109,7 @@ async function loadAll(){ groups = await api('/api/rank/keywords'); results = aw
 loadAll().catch(e=>notice(e.message));
 lucide.createIcons();
 </script>
+<script src="/ui-polish.js" defer></script>
 <script src="/ai-advisor-ui.js" defer></script>
 <script>
 (function() {

@@ -14,10 +14,10 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 input,textarea,select{background:#101116;border:1px solid rgba(255,255,255,.1);color:#e5e7eb;border-radius:11px;padding:11px 12px;outline:none}
 input:focus,textarea:focus,select:focus{border-color:rgba(32,212,107,.45);box-shadow:0 0 0 3px rgba(32,212,107,.08)}
 
-/* Override rank-defense-v2 buttons to match shared sidebar.css (.buttonLink) */
-button:not(.navActive){background:#2f3136;border:0;color:#f9fafb;border-radius:10px;font-weight:900}
-.submitBtn,.primaryBtn,button.primary,.toolbar button:nth-child(2){background:#20d46b;color:#06100a}
-.toolbar button,.buttonLink{min-height:40px;padding:0 14px}
+/* Content area button overrides — scoped to avoid affecting the sidebar nav */
+.contentMain button:not(.navActive){background:#2f3136;border:0;color:#f9fafb;border-radius:10px;font-weight:900}
+.contentMain .submitBtn,.contentMain .primaryBtn,.contentMain button.primary,.contentMain .toolbar button:nth-child(2){background:#20d46b;color:#06100a}
+.contentMain .toolbar button{min-height:40px;padding:0 14px}
 
 .inputGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .inputGrid input,.inputGrid select,.inputGrid textarea{width:100%;box-sizing:border-box}
