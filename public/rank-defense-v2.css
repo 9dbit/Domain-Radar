@@ -44,19 +44,22 @@ th{color:#9ca3af;background:#141519}
 th,td{border-color:rgba(255,255,255,.07);padding:10px;color:#d1d5db}
 .domain{color:#f8fafc}
 
-.pill{border:0;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:1000}
+.pill{border:0;border-radius:999px;padding:4px 8px;font-size:9px;font-weight:800;white-space:nowrap}
 .pill.ok{background:#103b25;color:#6ee7a8}
 .pill.warn{background:#45320d;color:#fbbf24}
-.pill.bad{background:#4a151c;color:#fecdd3}
+.pill.bad{background:#dc2626;color:#fff}
 .pill.ext{background:#132a45;color:#93c5fd}
 
-.resultList{gap:8px}
-.resultRow{background:#101116;border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:10px;grid-template-columns:42px minmax(0,1fr) 86px 70px}
-.rankBox{background:#18191c;border:1px solid rgba(255,255,255,.1);border-radius:10px}
-.hostLine a{color:#69a8ff}
-.titleLine{color:#cbd5e1}
-.reasonLine{color:#9ca3af}
-.intelBtn{background:#20d46b;color:#06100a}
+.resultList{gap:6px}
+.resultRow{background:#101116;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:5px}
+.hostLine{display:flex;flex-direction:column;gap:3px}
+.resultTopRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.resultTopRow a{color:#69a8ff;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rankLabel{font-size:10px;color:#9ca3af;white-space:nowrap;flex-shrink:0}
+.titleLine{color:#e2e8f0;font-size:12px;font-weight:500;line-height:1.35}
+.reasonLine{color:#6b7280;font-size:11px}
+.resultFooter{display:flex;align-items:center;justify-content:space-between;margin-top:1px}
+.intelBtn{background:#fff;color:#dc2626;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;border:0;cursor:pointer}
 
 .modalBackdrop{background:rgba(0,0,0,.72)}
 .modal{background:#18191c}
@@ -77,8 +80,6 @@ th,td{border-color:rgba(255,255,255,.07);padding:10px;color:#d1d5db}
   .submitArea{justify-content:stretch}
   .submitBtn,.primaryBtn{width:100%}
   .kwHead{grid-template-columns:1fr}
-  .resultRow{grid-template-columns:42px minmax(0,1fr)}
-  .resultRow>.pill,.resultRow>.intelBtn{justify-self:start}
 }
 @media (max-width:700px) {
   header{display:block}
@@ -91,9 +92,4 @@ th,td{border-color:rgba(255,255,255,.07);padding:10px;color:#d1d5db}
   tbody{display:grid;gap:8px}
   tr{background:#101116;border:1px solid rgba(255,255,255,.08);border-radius:12px}
   td{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;border-bottom:1px solid rgba(255,255,255,.06)}
-  .resultRow{grid-template-columns:40px minmax(0,1fr) 72px;grid-template-areas:"rank host host" "rank badge intel"}
-  .resultRow .rankBox{grid-area:rank}
-  .resultRow .hostLine{grid-area:host}
-  .resultRow>.pill{grid-area:badge}
-  .resultRow>.intelBtn{grid-area:intel}
 }
