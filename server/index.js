@@ -6,7 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const session = require("express-session");
 const { pool } = require("./db");
-const { runChecks, startScheduler } = require("./scheduler");
+const { runChecks, startScheduler, maybeAddProviderRegistryResult } = require("./scheduler");
 const { normalizeDomain, checkDomain, calculateGlobalStatus } = require("./checker");
 const settingsRoutes = require("./settingsRoutes");
 const projectRoutes = require("./projectRoutes");
@@ -41,6 +41,7 @@ async function runSingleDomainCheck(domainRow) {
   for (const proxy of proxies) checks.push(checkDomain(domainRow.domain, { type: "proxy", provider_name: proxy.provider_name || proxy.name, proxy }));
   for (const node of nodes) checks.push(checkViaNode(domainRow.domain, node));
   const results = await Promise.all(checks);
+  await maybeAddProviderRegistryResult(domainRow, results);
   for (const result of results) {
     await pool.query(`INSERT INTO check_results (domain_id, checker_type, provider_name, status, http_status, final_url, dns_result, latency_ms, reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [domainRow.id, result.checker_type, result.provider_name, result.status, result.http_status, result.final_url, result.dns_result, result.latency_ms, result.reason]);
   }

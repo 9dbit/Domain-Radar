@@ -60,19 +60,27 @@ function hasDirectWarning(results) {
 }
 
 function shouldCheckProviderRegistry(domain, results) {
-  if (normalizeStatus(domain.global_status) === "blocked") {
-    return { check: false, reason: "domain already blocked" };
-  }
+  // No longer skip already-blocked domains — they need re-validation to self-correct
 
   if (hasProviderNodeWarning(results)) {
     return { check: true, reason: "provider node warning" };
+  }
+
+  // Also trigger when nodes report blocked (to confirm or deny ISP block)
+  if (results.some(r => String(r.checker_type || "").startsWith("node:") && r.status === "blocked")) {
+    return { check: true, reason: "provider node blocked" };
   }
 
   if (TRUSTPOSITIF_ON_DIRECT_WARNING && hasDirectWarning(results)) {
     return { check: true, reason: "direct warning" };
   }
 
-  return { check: false, reason: "no provider-node/direct warning" };
+  // Also trigger when direct check reports blocked
+  if (results.some(r => r.checker_type === "direct" && r.status === "blocked")) {
+    return { check: true, reason: "direct blocked" };
+  }
+
+  return { check: false, reason: "no provider-node/direct warning or block" };
 }
 
 async function maybeAddProviderRegistryResult(domain, results) {
@@ -389,4 +397,4 @@ function startScheduler() {
   console.log("Scheduler started:", cronExpr, "confirmations:", getRetryLimit());
 }
 
-module.exports = { startScheduler, runChecks };
+module.exports = { startScheduler, runChecks, maybeAddProviderRegistryResult };
