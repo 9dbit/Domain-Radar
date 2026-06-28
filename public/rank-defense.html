@@ -10,6 +10,24 @@
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
 <body>
+<header class="mobileHeader">
+  <div class="mobileHeaderLogo">
+    <i data-lucide="sparkles" width="16" height="16"></i> Domain Radar
+  </div>
+  <button class="hamburgerBtn" id="hamburgerBtn">☰</button>
+</header>
+
+<div class="mobileDropMenu" id="mobileDropMenu">
+  <a href="/"><i data-lucide="layout-dashboard" width="16" height="16"></i> Dashboard</a>
+  <a href="/#projects"><i data-lucide="folder-kanban" width="16" height="16"></i> Projects</a>
+  <a href="/#rank"><i data-lucide="bar-chart-3" width="16" height="16"></i> Google Rank</a>
+  <a class="navActive" href="/rank-defense.html"><i data-lucide="shield" width="16" height="16"></i> Defense Center</a>
+  <a href="/#settings"><i data-lucide="settings" width="16" height="16"></i> Settings</a>
+  <button onclick="checkAll(); closeDropMenu()"><i data-lucide="refresh-cw" width="16" height="16"></i> Manual Check All</button>
+  <a href="/api/auth/logout"><i data-lucide="log-out" width="16" height="16"></i> Logout</a>
+</div>
+<div class="drawerBackdrop" id="drawerBackdrop" style="display:none" onclick="closeDropMenu()"></div>
+
 <aside class="sideNav">
   <h1>Domain Radar</h1>
   <p>Command Center</p>
@@ -90,5 +108,16 @@ loadAll().catch(e=>notice(e.message));
 lucide.createIcons();
 </script>
 <script src="/ai-advisor-ui.js" defer></script>
+<script>
+(function() {
+  var btn = document.getElementById('hamburgerBtn');
+  var menu = document.getElementById('mobileDropMenu');
+  var backdrop = document.getElementById('drawerBackdrop');
+  function openDropMenu() { menu.classList.add('open'); backdrop.style.display = 'block'; btn.textContent = '✕'; }
+  function closeDropMenu() { menu.classList.remove('open'); backdrop.style.display = 'none'; btn.textContent = '☰'; }
+  window.closeDropMenu = closeDropMenu;
+  if (btn) btn.addEventListener('click', function() { menu.classList.contains('open') ? closeDropMenu() : openDropMenu(); });
+})();
+</script>
 </body>
 </html>

@@ -251,6 +251,51 @@
 /* Prevent floating AI button from covering last-row content */
 .contentMain { padding-bottom: 88px; }
 
+/* ── Mobile header + hamburger dropdown nav (matches Dashboard React pattern) ── */
+.mobileHeader {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; height: 50px;
+  background: var(--side); border-bottom: 1px solid var(--line);
+  z-index: 300; align-items: center; justify-content: space-between; padding: 0 14px;
+}
+.mobileHeaderLogo {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 900; font-size: 15px; color: var(--green);
+}
+.hamburgerBtn {
+  width: 36px; height: 36px; padding: 0; border-radius: 9px;
+  background: var(--green); border: none; font-size: 18px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; cursor: pointer;
+}
+.mobileDropMenu {
+  position: fixed; top: 50px; left: 0; right: 0; z-index: 299;
+  background: var(--side); border-bottom: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  transform: translateY(-110%); transition: transform .22s ease;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4); overflow: hidden;
+}
+.mobileDropMenu.open { transform: translateY(0); }
+.mobileDropMenu a, .mobileDropMenu button {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; justify-content: flex-start; border-radius: 9px; padding: 10px 12px;
+  background: transparent; border: 0; font-size: 13px; font-weight: 700;
+  text-decoration: none; color: var(--text, #edf6ff); box-shadow: none; cursor: pointer;
+}
+.mobileDropMenu a:hover, .mobileDropMenu button:hover { background: rgba(255,255,255,.07); }
+.mobileDropMenu .navActive {
+  background: rgba(0,212,90,.1); color: var(--green);
+  box-shadow: inset 3px 0 0 var(--green);
+}
+.drawerBackdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 298;
+}
+@media (max-width: 640px) {
+  .mobileHeader { display: flex; }
+  .sideNav { display: none !important; }
+  .contentMain { margin-left: 0; padding-top: 58px; }
+}
+
 /* Alert center mobile */
 .alertList { align-items: stretch; }
 .alertItem { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; align-items: center; padding: 12px; overflow: hidden; }
