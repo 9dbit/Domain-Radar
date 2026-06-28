@@ -3,7 +3,7 @@ const axios = require("axios");
 const dns = require("dns").promises;
 const { pool } = require("./db");
 const { normalizeDomain } = require("./checker");
-const { sendTelegram } = require("./telegram");
+const { sendTelegram, sendTelegramToProject } = require("./telegram");
 
 const router = express.Router();
 
@@ -158,8 +158,15 @@ async function checkGroup(group) {
   }
   for (const d of domains) {
     const match = items.find((item) => domainMatches(item.link || "", d.domain));
-    await pool.query(`UPDATE rank_keyword_domains SET last_position=$1, last_page=$2, last_matched_url=$3, last_status=$4, last_checked_at=NOW() WHERE id=$5`, [match?.position || null, match?.page || null, match?.link || "", match ? "found" : "not_found", d.id]);
-    await pool.query(`INSERT INTO rank_results (keyword_id, keyword, domain, position, page, matched_url, source) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [d.id, group.keyword, d.domain, match?.position || null, match?.page || null, match?.link || "", process.env.SERPER_API_KEY ? "serper" : "google_custom_search"]).catch(() => {});
+    const newPos = match?.position || null;
+    const newPage = match?.page || null;
+    await pool.query(`UPDATE rank_keyword_domains SET last_position=$1, last_page=$2, last_matched_url=$3, last_status=$4, last_checked_at=NOW() WHERE id=$5`, [newPos, newPage, match?.link || "", match ? "found" : "not_found", d.id]);
+    await pool.query(`INSERT INTO rank_results (keyword_id, keyword, domain, position, page, matched_url, source) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [d.id, group.keyword, d.domain, newPos, newPage, match?.link || "", process.env.SERPER_API_KEY ? "serper" : "google_custom_search"]).catch(() => {});
+    if (d.last_position !== null && newPos !== null && d.last_position !== newPos) {
+      const dir = newPos < d.last_position ? "⬆️" : "⬇️";
+      const msg = `${dir} RANK CHANGE\n\nProject: ${group.project_name || "-"}\nKeyword: ${group.keyword}\nDomain: ${d.domain}\nOld: #${d.last_position} (page ${d.last_page || "?"})\nNew: #${newPos} (page ${newPage || "?"})`;
+      sendTelegramToProject(group.project_name, msg).catch(() => false);
+    }
   }
   for (const s of suspicious.slice(0, 25)) {
     const seen = await pool.query(`INSERT INTO rank_suspicious_seen (group_id, host, last_position, last_page) VALUES ($1,$2,$3,$4) ON CONFLICT (group_id, host) DO UPDATE SET last_seen_at=NOW(), last_position=EXCLUDED.last_position, last_page=EXCLUDED.last_page RETURNING (xmax = 0) AS is_new`, [group.id, s.host, s.position, s.page]);
