@@ -19,7 +19,7 @@ main .defensePage.contentMain{margin-left:0;padding:0}
 .contentMain input:focus,.contentMain textarea:focus,.contentMain select:focus{border-color:rgba(32,212,107,.45);box-shadow:0 0 0 3px rgba(32,212,107,.08)}
 
 /* Content area button overrides — scoped to avoid affecting the sidebar nav */
-.contentMain button:not(.navActive){background:#2f3136;border:0;color:#f9fafb;border-radius:10px;font-weight:900}
+.contentMain button:not(.navActive):not(.intelBtn):not(.whitelistBtn):not(.entityBtn){background:#2f3136;border:0;color:#f9fafb;border-radius:10px;font-weight:900}
 .contentMain .submitBtn,.contentMain .primaryBtn,.contentMain button.primary,.contentMain .toolbar button:nth-child(2){background:#20d46b;color:#06100a}
 .contentMain .toolbar button{min-height:40px;padding:0 14px}
 
@@ -67,8 +67,11 @@ th,td{border-color:rgba(255,255,255,.07);padding:10px;color:#d1d5db}
 .rankLabel{font-size:10px;color:#9ca3af;white-space:nowrap;flex-shrink:0}
 .titleLine{color:#e2e8f0;font-size:12px;font-weight:500;line-height:1.35}
 .reasonLine{color:#6b7280;font-size:11px}
-.resultFooter{display:flex;align-items:center;justify-content:space-between;margin-top:1px}
+.resultFooter{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:1px}
+.resultActions{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .intelBtn{background:#fff;color:#dc2626;font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;border:0;cursor:pointer;touch-action:manipulation;position:relative;z-index:2}
+.whitelistBtn{background:#20d46b;color:#06100a;font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;border:0;cursor:pointer;touch-action:manipulation;white-space:nowrap}
+.entityBtn{background:#3b82f6;color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;border:0;cursor:pointer;touch-action:manipulation;white-space:nowrap}
 
 .modalBackdrop{background:rgba(0,0,0,.72)}
 .modal{background:#18191c}

@@ -179,4 +179,35 @@ router.get("/test", async (req, res, next) => { try { const keyword = String(req
 router.post("/check/:id", async (req, res, next) => { try { await ensureRankTables(); const group = await getKeywordGroup(req.params.id); if (!group) return res.status(404).json({ error: "Keyword group not found" }); const result = await checkGroup(group); res.json({ ok: true, ...result, group: await getKeywordGroup(req.params.id) }); } catch (err) { next(err); } });
 router.post("/check-all", async (req, res, next) => { try { await ensureRankTables(); const { rows } = await pool.query("SELECT * FROM rank_keyword_groups WHERE is_active=true ORDER BY id DESC LIMIT 50"); const checked = []; for (const group of rows) { try { checked.push({ id: group.id, keyword: group.keyword, ...(await checkGroup(group)) }); } catch (err) { checked.push({ id: group.id, keyword: group.keyword, error: err.message }); } } res.json({ ok: true, checked }); } catch (err) { next(err); } });
 
+router.post("/keywords/:groupId/whitelist-domain", async (req, res, next) => {
+  try {
+    await ensureRankTables();
+    const groupId = Number(req.params.groupId);
+    const domain = normalizeDomain(String(req.body.domain || "").trim());
+    if (!domain) return res.status(400).json({ error: "Domain required" });
+    const group = (await pool.query("SELECT id FROM rank_keyword_groups WHERE id=$1", [groupId])).rows[0];
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    await pool.query(
+      `INSERT INTO rank_keyword_domains (group_id, domain, is_whitelisted) VALUES ($1,$2,true) ON CONFLICT (group_id, domain) DO UPDATE SET is_whitelisted=true`,
+      [groupId, domain]
+    );
+    res.json({ ok: true, domain });
+  } catch (err) { next(err); }
+});
+
+router.post("/results/:id/classify", async (req, res, next) => {
+  try {
+    await ensureRankTables();
+    const id = Number(req.params.id);
+    const classification = String(req.body.classification || "").trim();
+    if (!classification) return res.status(400).json({ error: "Classification required" });
+    const { rowCount } = await pool.query(
+      "UPDATE rank_scan_results SET classification=$1 WHERE id=$2",
+      [classification, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Result not found" });
+    res.json({ ok: true, id, classification });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

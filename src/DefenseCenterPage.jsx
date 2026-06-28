@@ -160,6 +160,34 @@ export default function DefenseCenterPage() {
     }
   }
 
+  async function whitelistDomain(groupId, domain) {
+    setNotice(`Adding ${domain} to whitelist...`);
+    try {
+      await api(`/api/rank/keywords/${groupId}/whitelist-domain`, {
+        method: "POST",
+        body: JSON.stringify({ domain }),
+      });
+      setNotice(`${domain} added to whitelist.`);
+      await loadAll();
+    } catch (err) {
+      setNotice("Whitelist failed: " + err.message);
+    }
+  }
+
+  async function classifyAsEntity(resultId) {
+    try {
+      await api(`/api/rank/results/${resultId}/classify`, {
+        method: "POST",
+        body: JSON.stringify({ classification: "entity_website" }),
+      });
+      setResults((prev) =>
+        prev.map((r) => (Number(r.id) === Number(resultId) ? { ...r, classification: "entity_website" } : r))
+      );
+    } catch (err) {
+      setNotice("Classify failed: " + err.message);
+    }
+  }
+
   const totalKw = groups.length;
   const totalDomains = groups.reduce((a, g) => a + (g.domains?.length || 0), 0);
   const foundDomains = groups.reduce((a, g) => a + (g.domains || []).filter((d) => d.last_position).length, 0);
@@ -244,7 +272,7 @@ export default function DefenseCenterPage() {
           {groups.map((g) => {
             const gRes = groupResults(g);
             const susp = gRes.filter((r) => r.classification === "suspicious");
-            const nonWhite = gRes.filter((r) => r.classification !== "whitelisted");
+            const nonWhite = gRes.filter((r) => r.classification !== "whitelisted" && r.classification !== "entity_website");
             return (
               <article key={g.id} className="kw">
                 <div className="kwHead">
@@ -325,7 +353,13 @@ export default function DefenseCenterPage() {
                           </div>
                           <div className="resultFooter">
                             <Pill type={r.classification} text={r.classification} />
-                            <button className="intelBtn" onClick={() => openIntel(r.domain)}>Intel</button>
+                            <div className="resultActions">
+                              {!(g.domains || []).some((d) => d.domain === r.domain) && (
+                                <button className="whitelistBtn" onClick={() => whitelistDomain(g.id, r.domain)}>Whitelist</button>
+                              )}
+                              <button className="entityBtn" onClick={() => classifyAsEntity(r.id)}>Entity</button>
+                              <button className="intelBtn" onClick={() => openIntel(r.domain)}>Intel</button>
+                            </div>
                           </div>
                         </div>
                       ))}
