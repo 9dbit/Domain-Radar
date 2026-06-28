@@ -116,19 +116,30 @@ async function checkDomain(domain, checker = { type: "direct", provider_name: "D
 }
 
 function calculateGlobalStatus(results) {
-  // "Confirmed block" = keyword evidence (internetpositif/nawala/etc.) or TrustPositif registry
-  const hasConfirmedBlock = results.some(r =>
+  // Keyword evidence: direct or proxy check detected internetpositif/nawala/trustpositif keyword
+  const hasKeywordEvidence = results.some(r =>
     r.status === "blocked" &&
-    (String(r.reason || "").toLowerCase().includes("keyword") ||
-     String(r.checker_type || "") === "provider_registry")
+    String(r.checker_type || "") !== "provider_registry" &&
+    String(r.reason || "").toLowerCase().includes("keyword")
+  );
+
+  // Registry evidence: TrustPositif registry confirmed the domain is blocked
+  const hasRegistryEvidence = results.some(r =>
+    r.status === "blocked" &&
+    String(r.checker_type || "") === "provider_registry"
   );
 
   // Node results are checker_type "node:*"
   const nodeResults = results.filter(r => String(r.checker_type || "").startsWith("node:"));
   const allNodesBlocked = nodeResults.length > 0 && nodeResults.every(r => r.status === "blocked");
 
-  // BLOCKED: confirmed evidence AND (all nodes blocked, or no nodes configured)
-  if (hasConfirmedBlock && (nodeResults.length === 0 || allNodesBlocked)) return "blocked";
+  if (nodeResults.length > 0) {
+    // With nodes: all nodes must be blocked AND we need keyword or registry evidence
+    if (allNodesBlocked && (hasKeywordEvidence || hasRegistryEvidence)) return "blocked";
+  } else {
+    // No nodes: keyword evidence from direct/proxy is required (registry alone is not enough)
+    if (hasKeywordEvidence) return "blocked";
+  }
 
   // Any blocked result that doesn't meet full criteria → downgrade to warning
   if (results.some(r => r.status === "blocked")) return "warning";
