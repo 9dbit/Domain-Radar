@@ -87,9 +87,13 @@ th,td{border-color:rgba(255,255,255,.07);padding:10px;color:#d1d5db}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
   .panel{padding:12px}
   .cols{padding:12px}
-  table,thead,tbody,tr,td{display:block;width:100%}
-  thead{display:none}
-  tbody{display:grid;gap:8px}
-  tr{background:#101116;border:1px solid rgba(255,255,255,.08);border-radius:12px}
-  td{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .whitelistPane table,.whitelistPane thead,.whitelistPane tbody,.whitelistPane tr,.whitelistPane td{display:block;width:100%;box-sizing:border-box}
+  .whitelistPane thead{display:none}
+  .whitelistPane tbody{display:flex;flex-direction:column;gap:8px}
+  .whitelistPane tr{background:#101116;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;width:auto}
+  .whitelistPane td{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px;width:auto}
+  .whitelistPane td:last-child{border-bottom:0}
+  .whitelistPane td::before{content:attr(data-label);color:#6b7280;font-size:10px;font-weight:700;letter-spacing:.06em;min-width:44px;flex-shrink:0}
+  .whitelistPane td.domain{font-size:14px;font-weight:600;color:#f8fafc;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .whitelistPane td.domain::before{display:none}
 }
