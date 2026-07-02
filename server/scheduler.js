@@ -11,10 +11,13 @@ const { isAcknowledged, clearAcknowledged } = require("./noticeState");
 
 let running = false;
 let reasonTypeColumnReady = false;
+let digestRunning = false;
+let digestWatchdogStarted = false;
 
 const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
 const DIGEST_INTERVAL_MINUTES = Number(process.env.DIGEST_INTERVAL_MINUTES || 60);
 const DIGEST_LIMIT = Number(process.env.TELEGRAM_DIGEST_LIMIT || 120);
+const DIGEST_WATCHDOG_MINUTES = Number(process.env.TELEGRAM_DIGEST_WATCHDOG_MINUTES || 5);
 const TRUSTPOSITIF_ON_DIRECT_WARNING = String(process.env.TRUSTPOSITIF_ON_DIRECT_WARNING || "true").toLowerCase() !== "false";
 
 function getRetryLimit() {
@@ -210,56 +213,75 @@ function formatDomainList(title, rows, finalUrlMap) {
   return `${title}\n${lines.join("\n")}`;
 }
 
-async function sendHourlyDigestIfDue() {
-  await ensureDigestTable();
+async function sendHourlyDigestIfDue(source = "scheduler") {
+  if (digestRunning) {
+    console.log(`[TelegramDigest] skipped ${source}: digest already running`);
+    return false;
+  }
 
-  const { rows: state } = await pool.query(
-    "SELECT last_sent_at FROM telegram_digest_state WHERE key='hourly_status_report' LIMIT 1"
-  );
+  digestRunning = true;
 
-  const lastSentAt = state[0]?.last_sent_at ? new Date(state[0].last_sent_at).getTime() : 0;
-  const intervalMs = DIGEST_INTERVAL_MINUTES * 60 * 1000;
+  try {
+    await ensureDigestTable();
 
-  if (lastSentAt && Date.now() - lastSentAt < intervalMs) return;
+    const { rows: state } = await pool.query(
+      "SELECT last_sent_at FROM telegram_digest_state WHERE key='hourly_status_report' LIMIT 1"
+    );
 
-  const { rows: domains } = await pool.query(
-    "SELECT id, domain, global_status FROM domains WHERE is_active=true ORDER BY domain ASC"
-  );
+    const lastSentAt = state[0]?.last_sent_at ? new Date(state[0].last_sent_at).getTime() : 0;
+    const intervalMs = DIGEST_INTERVAL_MINUTES * 60 * 1000;
 
-  const finalUrlMap = await latestFinalUrlMap();
+    if (lastSentAt && Date.now() - lastSentAt < intervalMs) return false;
 
-  const normal = domains.filter((d) => normalizeStatus(d.global_status) === "working");
-  const warning = domains.filter((d) => normalizeStatus(d.global_status) === "warning");
-  const blocked = domains.filter((d) => normalizeStatus(d.global_status) === "blocked");
-  const redirected = blocked.filter((d) => finalUrlMap.get(d.id));
-  const blockedOnly = blocked.filter((d) => !finalUrlMap.get(d.id));
-  const message = [
-    "DOMAIN RADAR HOURLY REPORT",
-    "",
-    `Time: ${nowWib()} WIB`,
-    `Total: ${domains.length}`,
-    `✅ Normal: ${normal.length}`,
-    `⚠️ Warning: ${warning.length}`,
-    `❗ Blocked: ${blockedOnly.length}`,
-    `➡️ Blocked + redirected: ${redirected.length}`,
-    "",
-    formatDomainList("NORMAL", normal, finalUrlMap),
-    "",
-    formatDomainList("WARNING", warning, finalUrlMap),
-    "",
-    formatDomainList("BLOCKED", blockedOnly, finalUrlMap),
-    "",
-    formatDomainList("BLOCKED / REDIRECTED", redirected, finalUrlMap)
-  ].join("\n");
+    const { rows: domains } = await pool.query(
+      "SELECT id, domain, global_status FROM domains WHERE is_active=true ORDER BY domain ASC"
+    );
 
-  const sent = await sendTelegram(message);
+    const finalUrlMap = await latestFinalUrlMap();
 
-  if (sent) {
-    await pool.query(`
-      INSERT INTO telegram_digest_state (key, last_sent_at)
-      VALUES ('hourly_status_report', NOW())
-      ON CONFLICT (key) DO UPDATE SET last_sent_at=NOW()
-    `);
+    const normal = domains.filter((d) => normalizeStatus(d.global_status) === "working");
+    const warning = domains.filter((d) => normalizeStatus(d.global_status) === "warning");
+    const blocked = domains.filter((d) => normalizeStatus(d.global_status) === "blocked");
+    const redirected = blocked.filter((d) => finalUrlMap.get(d.id));
+    const blockedOnly = blocked.filter((d) => !finalUrlMap.get(d.id));
+    const message = [
+      "DOMAIN RADAR HOURLY REPORT",
+      "",
+      `Time: ${nowWib()} WIB`,
+      `Total: ${domains.length}`,
+      `✅ Normal: ${normal.length}`,
+      `⚠️ Warning: ${warning.length}`,
+      `❗ Blocked: ${blockedOnly.length}`,
+      `➡️ Blocked + redirected: ${redirected.length}`,
+      "",
+      formatDomainList("NORMAL", normal, finalUrlMap),
+      "",
+      formatDomainList("WARNING", warning, finalUrlMap),
+      "",
+      formatDomainList("BLOCKED", blockedOnly, finalUrlMap),
+      "",
+      formatDomainList("BLOCKED / REDIRECTED", redirected, finalUrlMap)
+    ].join("\n");
+
+    const sent = await sendTelegram(message);
+
+    if (sent) {
+      await pool.query(`
+        INSERT INTO telegram_digest_state (key, last_sent_at)
+        VALUES ('hourly_status_report', NOW())
+        ON CONFLICT (key) DO UPDATE SET last_sent_at=NOW()
+      `);
+      console.log(`[TelegramDigest] sent by ${source} at ${nowWib()} WIB`);
+      return true;
+    }
+
+    console.warn(`[TelegramDigest] failed to send by ${source}. Check Telegram token/chat_id/runtime settings.`);
+    return false;
+  } catch (err) {
+    console.error(`[TelegramDigest] error from ${source}:`, err.message);
+    return false;
+  } finally {
+    digestRunning = false;
   }
 }
 
@@ -368,7 +390,7 @@ async function runChecks() {
       }
     }
 
-    await sendHourlyDigestIfDue();
+    await sendHourlyDigestIfDue("runChecks");
   } catch (err) {
     console.error("Scheduler error:", err);
   } finally {
@@ -376,10 +398,29 @@ async function runChecks() {
   }
 }
 
+function startDigestWatchdog() {
+  if (digestWatchdogStarted) return;
+  digestWatchdogStarted = true;
+
+  const minutes = Number.isFinite(DIGEST_WATCHDOG_MINUTES) && DIGEST_WATCHDOG_MINUTES > 0 ? DIGEST_WATCHDOG_MINUTES : 5;
+  const intervalMs = minutes * 60 * 1000;
+
+  console.log(`Telegram digest watchdog started: every ${minutes} minutes, digest interval ${DIGEST_INTERVAL_MINUTES} minutes`);
+
+  setTimeout(() => {
+    sendHourlyDigestIfDue("startup-watchdog").catch((err) => console.error("Telegram digest startup watchdog error:", err.message));
+  }, 30 * 1000);
+
+  setInterval(() => {
+    sendHourlyDigestIfDue("interval-watchdog").catch((err) => console.error("Telegram digest interval watchdog error:", err.message));
+  }, intervalMs);
+}
+
 function startScheduler() {
   const cronExpr = getCronExpr();
   cron.schedule(cronExpr, runChecks);
+  startDigestWatchdog();
   console.log("Scheduler started:", cronExpr, "confirmations:", getRetryLimit());
 }
 
-module.exports = { startScheduler, runChecks, maybeAddProviderRegistryResult };
+module.exports = { startScheduler, runChecks, maybeAddProviderRegistryResult, sendHourlyDigestIfDue };
