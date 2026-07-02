@@ -69,6 +69,73 @@
     return data;
   }
 
+  function setNativeValue(input, value) {
+    if (!input) return;
+    const proto = input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(input, value);
+    else input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function collectProjectNames(projects, domains) {
+    const names = new Set();
+    (projects || []).forEach((p) => {
+      const name = String(p.project_name || p.name || '').trim();
+      if (name && name !== 'No Project') names.add(name);
+    });
+    (domains || []).forEach((d) => {
+      const name = String(d.project_name || '').trim();
+      if (name && name !== 'No Project') names.add(name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }
+
+  function buildProjectSelect(names, targetInput, placeholder) {
+    const select = document.createElement('select');
+    select.className = 'projectModeSelect';
+    select.innerHTML = '<option value="__new__">+ Project baru</option>' + names.map((name) => '<option value="' + html(name) + '">' + html(name) + '</option>').join('');
+    select.title = placeholder || 'Pilih project existing atau buat project baru';
+    select.onchange = () => {
+      if (select.value === '__new__') {
+        setNativeValue(targetInput, '');
+        targetInput.placeholder = placeholder || 'Project baru';
+        targetInput.readOnly = false;
+        targetInput.style.display = '';
+        targetInput.focus();
+      } else {
+        setNativeValue(targetInput, select.value);
+        targetInput.placeholder = 'Project existing selected';
+        targetInput.readOnly = true;
+        targetInput.style.display = '';
+      }
+    };
+    return select;
+  }
+
+  async function patchProjectSelectors() {
+    try {
+      const [projects, domains] = await Promise.all([getJson('/api/projects'), getJson('/api/domains')]);
+      const names = collectProjectNames(projects, domains);
+      if (!names.length) return;
+
+      const createInput = document.querySelector('.createProjectForm input[placeholder^="Project name"]');
+      if (createInput && !createInput.dataset.projectSelectPatched) {
+        createInput.dataset.projectSelectPatched = '1';
+        const select = buildProjectSelect(names, createInput, 'Project baru, contoh: Empire88');
+        createInput.parentNode.insertBefore(select, createInput);
+      }
+
+      const rankInput = document.querySelector('.rankForm input[placeholder="Project name"]');
+      if (rankInput && !rankInput.dataset.projectSelectPatched) {
+        rankInput.dataset.projectSelectPatched = '1';
+        const select = buildProjectSelect(names, rankInput, 'Project baru untuk Google Rank');
+        rankInput.parentNode.insertBefore(select, rankInput);
+      }
+    } catch (_) {}
+  }
+
   async function loadAnalytics() {
     const page = ensurePage();
     if (!page) return;
@@ -156,11 +223,15 @@
   window._ensureAnalyticsPage = ensurePage;
   window._loadAnalytics = loadAnalytics;
   window._patchProviderSignalLabels = patchProviderSignalLabels;
+  window._patchProjectSelectors = patchProjectSelectors;
   setTimeout(ensureCompactRankPanel, 700);
   setTimeout(patchProviderSignalLabels, 900);
+  setTimeout(patchProjectSelectors, 1000);
   setInterval(patchProviderSignalLabels, 4000);
+  setInterval(patchProjectSelectors, 5000);
   window.addEventListener('hashchange', () => {
     setTimeout(ensureCompactRankPanel, 300);
     setTimeout(patchProviderSignalLabels, 500);
+    setTimeout(patchProjectSelectors, 500);
   });
 })();
