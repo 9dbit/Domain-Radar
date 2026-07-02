@@ -7,6 +7,14 @@
     return String(value ?? '').replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   }
 
+  function friendlyAiError(err) {
+    const raw = String(err?.message || err || '').toLowerCase();
+    if (raw.includes('quota') || raw.includes('insufficient_quota') || raw.includes('rate limit') || raw.includes('429') || raw.includes('billing')) {
+      return 'iam bussy right now, currently learn something about your company, please try again in 15-30 minutes';
+    }
+    return err?.message || 'Analytics unavailable';
+  }
+
   function lines(text) {
     return String(text || '-').split('\n').map((x) => '<p>' + html(x) + '</p>').join('');
   }
@@ -32,8 +40,8 @@
 
   async function getJson(url) {
     const res = await fetch(url, { credentials: 'include' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || data.message || url + ' ' + res.status);
     return data;
   }
 
@@ -53,7 +61,7 @@
       page.querySelector('[data-blocked]').textContent = Number(counts.blocked || 0) + Number(counts.blocked_redirected || 0);
       page.querySelector('.analyticsBody').innerHTML = '<div class="analyticsTwoCol">' + card('AI Executive Summary', lines(summary.summary)) + card('Recommended Action', '<p>Handle blocked domains first.</p><p>Separate pure blocked and redirected blocked domains.</p><p>Review warning domains by DNS, SSL, HTTP, redirect, and node status.</p>') + '</div><div class="analyticsTwoCol">' + card('Risk Buckets', '<p><b>Critical:</b> ' + list(blocked) + '</p><p><b>Watch:</b> ' + list(warning) + '</p><p><b>Stable:</b> ' + html(counts.normal ?? 0) + ' normal domains.</p>') + card('Reason Intelligence', reasonHtml || '-') + '</div><article class="analyticsCard analyticsWide"><h3>Domain Samples</h3><div class="analyticsSamples"><div><b>Warning</b><span>' + list(warning) + '</span></div><div><b>Blocked</b><span>' + list(blocked) + '</span></div><div><b>Blocked / Redirected</b><span>' + list(summary.samples?.blocked_redirected || []) + '</span></div></div></article>';
     } catch (err) {
-      page.querySelector('.analyticsBody').innerHTML = '<article class="analyticsCard"><h3>Analytics unavailable</h3><p>' + html(err.message) + '</p></article>';
+      page.querySelector('.analyticsBody').innerHTML = '<article class="analyticsCard"><h3>Analytics unavailable</h3><p>' + html(friendlyAiError(err)) + '</p></article>';
     }
   }
 
