@@ -33,12 +33,26 @@ async function ensureTaskTable() {
       battery_status TEXT,
       battery_health TEXT,
       battery_temperature_c NUMERIC,
+      signal_percent INT,
+      signal_dbm INT,
+      signal_asu INT,
+      signal_level INT,
+      signal_label TEXT,
+      network_operator TEXT,
+      network_type_label TEXT,
       ip TEXT,
       user_agent TEXT,
       last_seen_at TIMESTAMP DEFAULT NOW(),
       last_low_battery_alert_at TIMESTAMP
     )
   `);
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_percent INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_dbm INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_asu INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_level INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_label TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_operator TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_type_label TEXT");
 }
 
 function cleanName(name) {
@@ -54,36 +68,86 @@ async function findNode(nodeName, secretKey) {
   return rows[0] || null;
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function normalizeTelemetry(raw = {}) {
-  const batteryPercent = raw.battery_percent === null || raw.battery_percent === undefined || raw.battery_percent === "" ? null : Number(raw.battery_percent);
-  const temp = raw.battery_temperature_c === null || raw.battery_temperature_c === undefined || raw.battery_temperature_c === "" ? null : Number(raw.battery_temperature_c);
+  const batteryPercent = toNumberOrNull(raw.battery_percent);
+  const temp = toNumberOrNull(raw.battery_temperature_c);
+  const signalPercent = toNumberOrNull(raw.signal_percent);
+  const signalDbm = toNumberOrNull(raw.signal_dbm);
+  const signalAsu = toNumberOrNull(raw.signal_asu);
+  const signalLevel = toNumberOrNull(raw.signal_level);
+
+  const clippedSignalPercent = Number.isFinite(signalPercent)
+    ? Math.max(0, Math.min(100, Math.round(signalPercent)))
+    : null;
+
   return {
     battery_percent: Number.isFinite(batteryPercent) ? Math.max(0, Math.min(100, Math.round(batteryPercent))) : null,
     is_charging: typeof raw.is_charging === "boolean" ? raw.is_charging : null,
     battery_status: raw.battery_status ? String(raw.battery_status).slice(0, 80) : "",
     battery_health: raw.battery_health ? String(raw.battery_health).slice(0, 80) : "",
-    battery_temperature_c: Number.isFinite(temp) ? temp : null
+    battery_temperature_c: Number.isFinite(temp) ? temp : null,
+    signal_percent: clippedSignalPercent,
+    signal_dbm: Number.isFinite(signalDbm) ? Math.round(signalDbm) : null,
+    signal_asu: Number.isFinite(signalAsu) ? Math.round(signalAsu) : null,
+    signal_level: Number.isFinite(signalLevel) ? Math.max(0, Math.min(4, Math.round(signalLevel))) : null,
+    signal_label: raw.signal_label ? String(raw.signal_label).slice(0, 80) : "",
+    network_operator: raw.network_operator ? String(raw.network_operator).slice(0, 120) : "",
+    network_type_label: raw.network_type_label ? String(raw.network_type_label).slice(0, 80) : ""
   };
 }
 
 async function upsertTelemetry(node, telemetryRaw, req) {
+  await ensureTaskTable();
   const telemetry = normalizeTelemetry(telemetryRaw || {});
   const ip = req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "";
   const userAgent = req.headers["user-agent"] || "";
 
   await pool.query(
-    `INSERT INTO node_telemetry (node_id, battery_percent, is_charging, battery_status, battery_health, battery_temperature_c, ip, user_agent, last_seen_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-     ON CONFLICT (node_id) DO UPDATE SET
-       battery_percent=EXCLUDED.battery_percent,
-       is_charging=EXCLUDED.is_charging,
-       battery_status=EXCLUDED.battery_status,
-       battery_health=EXCLUDED.battery_health,
-       battery_temperature_c=EXCLUDED.battery_temperature_c,
-       ip=EXCLUDED.ip,
-       user_agent=EXCLUDED.user_agent,
-       last_seen_at=NOW()`,
-    [node.id, telemetry.battery_percent, telemetry.is_charging, telemetry.battery_status, telemetry.battery_health, telemetry.battery_temperature_c, String(ip).slice(0, 200), String(userAgent).slice(0, 300)]
+    `INSERT INTO node_telemetry (
+        node_id, battery_percent, is_charging, battery_status, battery_health, battery_temperature_c,
+        signal_percent, signal_dbm, signal_asu, signal_level, signal_label, network_operator, network_type_label,
+        ip, user_agent, last_seen_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
+      ON CONFLICT (node_id) DO UPDATE SET
+        battery_percent=EXCLUDED.battery_percent,
+        is_charging=EXCLUDED.is_charging,
+        battery_status=EXCLUDED.battery_status,
+        battery_health=EXCLUDED.battery_health,
+        battery_temperature_c=EXCLUDED.battery_temperature_c,
+        signal_percent=EXCLUDED.signal_percent,
+        signal_dbm=EXCLUDED.signal_dbm,
+        signal_asu=EXCLUDED.signal_asu,
+        signal_level=EXCLUDED.signal_level,
+        signal_label=EXCLUDED.signal_label,
+        network_operator=EXCLUDED.network_operator,
+        network_type_label=EXCLUDED.network_type_label,
+        ip=EXCLUDED.ip,
+        user_agent=EXCLUDED.user_agent,
+        last_seen_at=NOW()`,
+    [
+      node.id,
+      telemetry.battery_percent,
+      telemetry.is_charging,
+      telemetry.battery_status,
+      telemetry.battery_health,
+      telemetry.battery_temperature_c,
+      telemetry.signal_percent,
+      telemetry.signal_dbm,
+      telemetry.signal_asu,
+      telemetry.signal_level,
+      telemetry.signal_label,
+      telemetry.network_operator,
+      telemetry.network_type_label,
+      String(ip).slice(0, 200),
+      String(userAgent).slice(0, 300)
+    ]
   );
 
   if (telemetry.battery_percent !== null && telemetry.battery_percent <= LOW_BATTERY_THRESHOLD && telemetry.is_charging !== true) {
