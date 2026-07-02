@@ -65,6 +65,36 @@
     }
   }
 
+  function ensureCompactRankPanel() {
+    const main = document.querySelector('main');
+    if (!main) return;
+    if (!document.body.textContent.includes('Rank Defense Center')) return;
+    if (document.getElementById('rankCompactAlertPanel')) return;
+    fetch('/api/rank/results', { credentials: 'include' }).then((r) => r.json()).then((rows) => {
+      const items = Array.isArray(rows) ? rows.filter((x) => x.classification === 'suspicious').sort((a,b) => Number(a.position || 999) - Number(b.position || 999)) : [];
+      const panel = document.createElement('section');
+      panel.id = 'rankCompactAlertPanel';
+      panel.className = 'serpAlertPanel isCollapsed';
+      const chips = items.slice(0,3).map((x) => '<span class="serpChip"><strong>' + html(x.domain || '-') + '</strong><em>#' + html(x.position || '-') + '</em></span>').join('');
+      panel.innerHTML = '<div class="serpAlertHead"><div class="serpAlertTitle"><span class="serpAlertIcon">⚠️</span><div><b>Rank alerts (' + items.length + ')</b><span>Suspicious SERP results are collapsed for cleaner review.</span></div></div><div class="serpAlertActions"><button type="button" data-rank-toggle>Expand</button></div></div><div class="serpAlertBody"><div class="serpAlertSummary">' + (chips || '<span class="serpChip"><strong>Clear</strong><em>0</em></span>') + '</div></div>';
+      main.prepend(panel);
+      const button = panel.querySelector('[data-rank-toggle]');
+      button.onclick = () => {
+        const open = panel.classList.toggle('isOpen');
+        panel.classList.toggle('isCollapsed', !open);
+        button.textContent = open ? 'Collapse' : 'Expand';
+        if (open) {
+          const rowsHtml = items.slice(0,50).map((x) => '<tr><td class="serpDomain">' + html(x.domain || '-') + '</td><td>' + html(x.keyword || '-') + '</td><td>#' + html(x.position || '-') + '</td><td><a target="_blank" href="' + html(x.matched_url || '#') + '">Open</a></td></tr>').join('');
+          panel.querySelector('.serpAlertBody').innerHTML = '<div class="serpTableWrap"><table class="serpAlertTable"><thead><tr><th>Domain</th><th>Keyword</th><th>Position</th><th>Action</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+        } else {
+          panel.querySelector('.serpAlertBody').innerHTML = '<div class="serpAlertSummary">' + (chips || '<span class="serpChip"><strong>Clear</strong><em>0</em></span>') + '</div>';
+        }
+      };
+    }).catch(() => {});
+  }
+
   window._ensureAnalyticsPage = ensurePage;
   window._loadAnalytics = loadAnalytics;
+  setTimeout(ensureCompactRankPanel, 700);
+  window.addEventListener('hashchange', () => setTimeout(ensureCompactRankPanel, 300));
 })();
