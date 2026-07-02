@@ -24,6 +24,30 @@
     return html(items.slice(0, 18).join(', ') + (items.length > 18 ? ' +' + (items.length - 18) + ' more' : ''));
   }
 
+  function radioGenerationLabel(value) {
+    const raw = String(value || '').toLowerCase().trim();
+    if (!raw) return '';
+    if (raw.includes('nr') || raw.includes('5g')) return '5G';
+    if (raw.includes('lte') || raw.includes('4g')) return '4G';
+    if (raw.includes('hspa') || raw.includes('hsdpa') || raw.includes('hsupa') || raw.includes('umts') || raw.includes('wcdma') || raw.includes('3g')) return '3G';
+    if (raw.includes('edge') || raw.includes('gprs') || raw.includes('gsm') || raw.includes('2g')) return '2G';
+    if (raw.includes('cdma') || raw.includes('evdo')) return 'CDMA';
+    return String(value || '').toUpperCase();
+  }
+
+  function signalDetailLabel(node) {
+    const parts = [];
+    if (node.signal_label) parts.push(node.signal_label);
+    if (node.signal_dbm !== null && node.signal_dbm !== undefined) parts.push(node.signal_dbm + ' dBm');
+    if (node.signal_asu !== null && node.signal_asu !== undefined) parts.push(node.signal_asu + ' ASU');
+    if (node.network_type_label) parts.push(String(node.network_type_label).toUpperCase());
+    return parts.length ? parts.join(' / ') : 'n/a';
+  }
+
+  function nodeGenerationLabel(node) {
+    return radioGenerationLabel(node.network_type_label || node.radio_type || node.network_label || node.raw_network_type || '');
+  }
+
   function ensurePage() {
     const main = document.querySelector('main');
     if (!main) return null;
@@ -65,6 +89,42 @@
     }
   }
 
+  async function patchProviderSignalLabels() {
+    try {
+      const nodes = await getJson('/api/nodes');
+      if (!Array.isArray(nodes)) return;
+      const byName = new Map(nodes.map((node) => [String(node.name || '').trim(), node]));
+
+      document.querySelectorAll('.nodeStatusCard').forEach((cardEl) => {
+        const name = cardEl.querySelector('.nodeTitleBlock b')?.textContent?.trim();
+        const node = byName.get(name);
+        if (!node) return;
+
+        const generation = nodeGenerationLabel(node);
+        if (!generation) return;
+
+        const labelEl = cardEl.querySelector('.signalGauge b');
+        if (labelEl) labelEl.textContent = generation;
+
+        const gaugeEl = cardEl.querySelector('.signalGauge');
+        if (gaugeEl) gaugeEl.title = 'Signal ' + generation + ' · ' + signalDetailLabel(node);
+      });
+
+      document.querySelectorAll('table tbody tr').forEach((row) => {
+        const firstCell = row.querySelector('td');
+        const name = firstCell?.textContent?.trim();
+        const node = byName.get(name);
+        if (!node) return;
+        const generation = nodeGenerationLabel(node);
+        if (!generation) return;
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 7 && row.textContent.includes(node.provider_name || '')) {
+          cells[6].innerHTML = html(generation) + (node.signal_dbm !== null && node.signal_dbm !== undefined ? ' <span class="muted">' + html(node.signal_dbm + ' dBm') + '</span>' : '');
+        }
+      });
+    } catch (_) {}
+  }
+
   function ensureCompactRankPanel() {
     const main = document.querySelector('main');
     if (!main) return;
@@ -95,6 +155,12 @@
 
   window._ensureAnalyticsPage = ensurePage;
   window._loadAnalytics = loadAnalytics;
+  window._patchProviderSignalLabels = patchProviderSignalLabels;
   setTimeout(ensureCompactRankPanel, 700);
-  window.addEventListener('hashchange', () => setTimeout(ensureCompactRankPanel, 300));
+  setTimeout(patchProviderSignalLabels, 900);
+  setInterval(patchProviderSignalLabels, 4000);
+  window.addEventListener('hashchange', () => {
+    setTimeout(ensureCompactRankPanel, 300);
+    setTimeout(patchProviderSignalLabels, 500);
+  });
 })();
