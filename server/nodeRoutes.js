@@ -107,6 +107,26 @@ async function pingNode(node) {
   return { ok: true, latency_ms: Date.now() - started, data };
 }
 
+async function getPollingNodeHealth(nodeId) {
+  const { rows } = await pool.query(
+    `SELECT last_seen_at, NOW() - last_seen_at AS age
+     FROM node_telemetry
+     WHERE node_id=$1
+     LIMIT 1`,
+    [nodeId]
+  );
+
+  const lastSeenAt = rows[0]?.last_seen_at;
+  if (!lastSeenAt) return { health: "waiting", reason: "waiting for device agent heartbeat" };
+
+  const ageMs = Date.now() - new Date(lastSeenAt).getTime();
+  if (Number.isFinite(ageMs) && ageMs <= 2 * 60 * 1000) {
+    return { health: "online", reason: "active polling heartbeat" };
+  }
+
+  return { health: "waiting", reason: "polling heartbeat stale" };
+}
+
 router.get("/", async (req, res, next) => {
   try {
     await ensureNodeTable();
@@ -185,9 +205,21 @@ router.post("/:id/ping", async (req, res, next) => {
 
     try {
       const result = await pingNode(rows[0]);
-      const health = result.mode === "polling" ? "waiting" : "online";
-      await pool.query("UPDATE provider_nodes SET last_health_status=$1, last_ping_at=NOW() WHERE id=$2", [health, req.params.id]);
-      res.json(result);
+      let health = "online";
+      let reason = "ping ok";
+
+      if (result.mode === "polling") {
+        const polling = await getPollingNodeHealth(req.params.id);
+        health = polling.health;
+        reason = polling.reason;
+      }
+
+      await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS last_health_reason TEXT");
+      await pool.query(
+        "UPDATE provider_nodes SET last_health_status=$1, last_health_reason=$2, last_ping_at=NOW() WHERE id=$3",
+        [health, reason, req.params.id]
+      );
+      res.json({ ...result, health, reason });
     } catch (err) {
       await pool.query("UPDATE provider_nodes SET last_health_status='offline', last_ping_at=NOW() WHERE id=$1", [req.params.id]);
       res.json({ ok: false, error: err.message });
