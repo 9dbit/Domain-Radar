@@ -15,10 +15,11 @@ let digestRunning = false;
 let digestWatchdogStarted = false;
 
 const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
-const DIGEST_INTERVAL_MINUTES = Number(process.env.DIGEST_INTERVAL_MINUTES || 60);
+const DIGEST_INTERVAL_MINUTES = Number(process.env.DIGEST_INTERVAL_MINUTES || 10);
 const DIGEST_LIMIT = Number(process.env.TELEGRAM_DIGEST_LIMIT || 120);
 const DIGEST_WATCHDOG_MINUTES = Number(process.env.TELEGRAM_DIGEST_WATCHDOG_MINUTES || 5);
 const TRUSTPOSITIF_ON_DIRECT_WARNING = String(process.env.TRUSTPOSITIF_ON_DIRECT_WARNING || "true").toLowerCase() !== "false";
+const DASHBOARD_URL = process.env.DOMAIN_RADAR_DASHBOARD_URL || "https://domain-radar.org";
 
 function getRetryLimit() {
   const value = Number(getRuntimeSettings().retry_confirmations || 3);
@@ -175,19 +176,6 @@ async function ensureDigestTable() {
   `);
 }
 
-async function latestFinalUrlMap() {
-  const { rows } = await pool.query(`
-    SELECT DISTINCT ON (domain_id) domain_id, final_url
-    FROM check_results
-    WHERE COALESCE(final_url, '') <> ''
-    ORDER BY domain_id, checked_at DESC
-  `);
-
-  const map = new Map();
-  for (const row of rows) map.set(row.domain_id, row.final_url || "");
-  return map;
-}
-
 function iconFor(status, finalUrl = "") {
   const value = normalizeStatus(status);
   if (value === "working") return "✅";
@@ -197,20 +185,114 @@ function iconFor(status, finalUrl = "") {
   return "•";
 }
 
-function formatDomainList(title, rows, finalUrlMap) {
+function projectName(value) {
+  return String(value || "").trim() || "No Project";
+}
+
+function safeCell(value) {
+  return String(value || "-").replace(/\|/g, "/").replace(/[\r\n]+/g, " ").trim() || "-";
+}
+
+function truncateCell(value, max = 80) {
+  const text = safeCell(value);
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function buildProjectSummary(domains) {
+  const map = new Map();
+
+  for (const domain of domains) {
+    const project = projectName(domain.project_name);
+    if (!map.has(project)) {
+      map.set(project, { project, normal: 0, warning: 0, blocked: 0, redirected: 0, total: 0 });
+    }
+
+    const row = map.get(project);
+    const status = normalizeStatus(domain.global_status);
+    const redirected = Boolean(domain.final_url);
+
+    row.total += 1;
+    if (status === "working") row.normal += 1;
+    else if (status === "warning") row.warning += 1;
+    else if (status === "blocked" && redirected) row.redirected += 1;
+    else if (status === "blocked") row.blocked += 1;
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.project.localeCompare(b.project));
+}
+
+function formatProjectSummaryTable(rows) {
+  if (!rows.length) return "-";
+
+  const lines = [
+    "| Project | Domain | Status |",
+    "|---|---:|---|"
+  ];
+
+  for (const row of rows) {
+    if (row.normal) lines.push(`| ${safeCell(row.project)} | ${row.normal} | 🟢 Normal |`);
+    if (row.warning) lines.push(`| ${safeCell(row.project)} | ${row.warning} | 🟡 Warning |`);
+    if (row.blocked) lines.push(`| ${safeCell(row.project)} | ${row.blocked} | 🔴 Blocked |`);
+    if (row.redirected) lines.push(`| ${safeCell(row.project)} | ${row.redirected} | ➡️ Redirected |`);
+  }
+
+  return lines.join("\n");
+}
+
+function formatDetailedDomainTable(title, rows, mode) {
   if (!rows.length) return `${title}\n-`;
 
-  const lines = rows.slice(0, DIGEST_LIMIT).map((row) => {
-    const finalUrl = finalUrlMap.get(row.id) || "";
-    const redirect = normalizeStatus(row.global_status) === "blocked" && finalUrl ? ` → ${finalUrl}` : "";
-    return `${iconFor(row.global_status, finalUrl)} ${row.domain}${redirect}`;
-  });
+  const lines = [
+    title,
+    "| Project | Domain | Provider / Direct | Detail |",
+    "|---|---|---|---|"
+  ];
+
+  for (const row of rows.slice(0, DIGEST_LIMIT)) {
+    const provider = row.provider_name || row.checker_type || "-";
+    const detail = mode === "redirected" ? `➡️ ${row.final_url || "-"}` : (row.reason || "Blocked");
+    lines.push(`| ${safeCell(projectName(row.project_name))} | ${safeCell(row.domain)} | ${safeCell(provider)} | ${truncateCell(detail, 90)} |`);
+  }
 
   if (rows.length > DIGEST_LIMIT) {
     lines.push(`...and ${rows.length - DIGEST_LIMIT} more`);
   }
 
-  return `${title}\n${lines.join("\n")}`;
+  return lines.join("\n");
+}
+
+async function latestDomainStatusRows() {
+  const { rows } = await pool.query(`
+    SELECT
+      d.id,
+      d.domain,
+      d.project_name,
+      d.global_status,
+      latest.provider_name,
+      latest.checker_type,
+      latest.reason,
+      latest.checked_at,
+      COALESCE(final.final_url, latest.final_url, '') AS final_url
+    FROM domains d
+    LEFT JOIN LATERAL (
+      SELECT provider_name, checker_type, reason, final_url, checked_at
+      FROM check_results r
+      WHERE r.domain_id = d.id
+      ORDER BY r.checked_at DESC
+      LIMIT 1
+    ) latest ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT final_url
+      FROM check_results r
+      WHERE r.domain_id = d.id AND COALESCE(r.final_url, '') <> ''
+      ORDER BY r.checked_at DESC
+      LIMIT 1
+    ) final ON TRUE
+    WHERE d.is_active=true
+    ORDER BY COALESCE(NULLIF(d.project_name, ''), 'No Project') ASC, d.domain ASC
+  `);
+
+  return rows;
 }
 
 async function sendHourlyDigestIfDue(source = "scheduler") {
@@ -233,37 +315,40 @@ async function sendHourlyDigestIfDue(source = "scheduler") {
 
     if (lastSentAt && Date.now() - lastSentAt < intervalMs) return false;
 
-    const { rows: domains } = await pool.query(
-      "SELECT id, domain, global_status FROM domains WHERE is_active=true ORDER BY domain ASC"
-    );
-
-    const finalUrlMap = await latestFinalUrlMap();
-
+    const domains = await latestDomainStatusRows();
     const normal = domains.filter((d) => normalizeStatus(d.global_status) === "working");
     const warning = domains.filter((d) => normalizeStatus(d.global_status) === "warning");
     const blocked = domains.filter((d) => normalizeStatus(d.global_status) === "blocked");
-    const redirected = blocked.filter((d) => finalUrlMap.get(d.id));
-    const blockedOnly = blocked.filter((d) => !finalUrlMap.get(d.id));
+    const redirected = blocked.filter((d) => d.final_url);
+    const blockedOnly = blocked.filter((d) => !d.final_url);
+    const summaryRows = buildProjectSummary(domains);
+
     const message = [
-      "DOMAIN RADAR HOURLY REPORT",
+      "DOMAIN RADAR REPORT",
       "",
       `Time: ${nowWib()} WIB`,
-      `Total: ${domains.length}`,
-      `✅ Normal: ${normal.length}`,
-      `⚠️ Warning: ${warning.length}`,
-      `❗ Blocked: ${blockedOnly.length}`,
-      `➡️ Blocked + redirected: ${redirected.length}`,
+      `Interval: ${DIGEST_INTERVAL_MINUTES} minutes`,
+      `Total Active Domains: ${domains.length}`,
+      `🟢 Normal: ${normal.length}`,
+      `🟡 Warning: ${warning.length}`,
+      `🔴 Blocked: ${blockedOnly.length}`,
+      `➡️ Redirected: ${redirected.length}`,
       "",
-      formatDomainList("NORMAL", normal, finalUrlMap),
+      "PROJECT SUMMARY",
+      formatProjectSummaryTable(summaryRows),
       "",
-      formatDomainList("WARNING", warning, finalUrlMap),
+      `Please check all domains with warning status at: ${DASHBOARD_URL}`,
       "",
-      formatDomainList("BLOCKED", blockedOnly, finalUrlMap),
+      formatDetailedDomainTable("BLOCKED DOMAINS", blockedOnly, "blocked"),
       "",
-      formatDomainList("BLOCKED / REDIRECTED", redirected, finalUrlMap)
+      formatDetailedDomainTable("REDIRECTED DOMAINS", redirected, "redirected")
     ].join("\n");
 
-    const sent = await sendTelegram(message);
+    const sent = await sendTelegram(message, {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Open Domain Radar", url: DASHBOARD_URL }]]
+      }
+    });
 
     if (sent) {
       await pool.query(`
