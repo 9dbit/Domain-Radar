@@ -5,9 +5,18 @@ Paket ini dibuat supaya provider node baru bisa dipasang cepat di Replit dan Ter
 ## Isi Paket
 
 - `termux-install.sh`: installer cepat untuk HP Android / Termux.
-- `nodes.env.sample`: contoh konfigurasi semua provider node.
 - `REPLIT_SETUP.md`: checklist setup Replit pusat.
 - `TERMUX_RUNBOOK.md`: cara install, test, run, restart, dan troubleshoot di Termux.
+
+## Node yang disiapkan
+
+- TELKOMSEL-JKT-01
+- XL-JKT-01
+- INDOSAT-JKT-01
+- TRI-JKT-01
+- SMARTFREN-JKT-01
+- BIZNET-JKT-01
+- INDIHOME-JKT-01
 
 ## Alur Cepat
 
