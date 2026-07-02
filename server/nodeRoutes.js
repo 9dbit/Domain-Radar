@@ -28,12 +28,26 @@ async function ensureNodeTable() {
       battery_status TEXT,
       battery_health TEXT,
       battery_temperature_c NUMERIC,
+      signal_percent INT,
+      signal_dbm INT,
+      signal_asu INT,
+      signal_level INT,
+      signal_label TEXT,
+      network_operator TEXT,
+      network_type_label TEXT,
       ip TEXT,
       user_agent TEXT,
       last_seen_at TIMESTAMP DEFAULT NOW(),
       last_low_battery_alert_at TIMESTAMP
     )
   `);
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_percent INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_dbm INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_asu INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_level INT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_label TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_operator TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_type_label TEXT");
 }
 
 function cleanBase(url) {
@@ -68,6 +82,14 @@ function quantizeBatteryPercent(value) {
   return Math.floor(clamped / 10) * 10;
 }
 
+function formatSignalLabel(node) {
+  if (node.signal_label) return node.signal_label;
+  if (node.signal_percent !== null && node.signal_percent !== undefined) return `${node.signal_percent}%`;
+  if (node.signal_dbm !== null && node.signal_dbm !== undefined) return `${node.signal_dbm} dBm`;
+  if (node.signal_level !== null && node.signal_level !== undefined) return `${node.signal_level}/4`;
+  return "n/a";
+}
+
 function enrichNodeForUi(node) {
   const originalProviderName = node.provider_name;
   const originalNetworkType = node.network_type;
@@ -77,8 +99,11 @@ function enrichNodeForUi(node) {
   const batteryLabel = hasBattery ? `${visualBatteryPercent}%` : "n/a";
   const chargingLabel = node.is_charging === null || node.is_charging === undefined ? "n/a" : node.is_charging ? "Yes" : "No";
   const lastSeenLabel = node.telemetry_last_seen_at ? new Date(node.telemetry_last_seen_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "never";
-  const signalLabel = node.signal_label || "n/a";
-  const iconLine = `${originalNetworkType} · 📶 Signal ${signalLabel} · 🔋 ${batteryLabel} · ⚡ ${chargingLabel}`;
+  const signalLabel = formatSignalLabel(node);
+  const networkTypeParts = [originalNetworkType];
+  if (node.network_type_label) networkTypeParts.push(node.network_type_label);
+  if (node.network_operator) networkTypeParts.push(node.network_operator);
+  const iconLine = `${networkTypeParts.join(" · ")} · 📶 Signal ${signalLabel} · 🔋 ${batteryLabel} · ⚡ ${chargingLabel}`;
   return {
     ...node,
     raw_provider_name: originalProviderName,
@@ -137,6 +162,13 @@ router.get("/", async (req, res, next) => {
         t.battery_status,
         t.battery_health,
         t.battery_temperature_c,
+        t.signal_percent,
+        t.signal_dbm,
+        t.signal_asu,
+        t.signal_level,
+        t.signal_label,
+        t.network_operator,
+        t.network_type_label,
         t.ip AS telemetry_ip,
         t.last_seen_at AS telemetry_last_seen_at,
         t.last_low_battery_alert_at
