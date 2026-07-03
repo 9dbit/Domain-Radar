@@ -1,4 +1,4 @@
-/* Restored rotating Domain Radar AI logo treatment */
+/* Restored rotating Domain Radar logo treatment */
 aside h1 {
   font-size: 0 !important;
   display: flex !important;
@@ -16,23 +16,20 @@ aside h1::before {
   border-radius: 999px;
   display: inline-block;
   flex: 0 0 auto;
-  background: conic-gradient(from 0deg, #00f06a, #58a6ff, #00d45a, #00f06a);
-  box-shadow: 0 0 18px rgba(0, 212, 90, .34), inset 0 0 0 5px #05070b;
+  background: conic-gradient(from 0deg, #ffffff, #bfc7d5, #ffffff, #e8eef7, #ffffff);
+  box-shadow: 0 0 18px rgba(255, 255, 255, .26), inset 0 0 0 5px #05070b;
   animation: domainRadarLogoSpin 4.5s linear infinite;
 }
 
 aside h1::after {
-  content: "Domain Radar AI";
+  content: "Domain Radar";
   font-size: 20px;
   font-weight: 1000;
-  color: #edf6ff;
   letter-spacing: -.04em;
   line-height: 1;
   white-space: nowrap;
-  background: linear-gradient(90deg, #edf6ff, #a7f3d0, #00f06a);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #ffffff;
+  text-shadow: 0 0 14px rgba(255, 255, 255, .18);
 }
 
 .mobileHeaderLogo {
@@ -42,21 +39,34 @@ aside h1::after {
 .mobileHeaderLogo svg {
   width: 18px;
   height: 18px;
-  color: var(--green);
+  color: #ffffff;
   animation: domainRadarLogoSpin 4.5s linear infinite;
-  filter: drop-shadow(0 0 7px rgba(0, 212, 90, .45));
+  filter: drop-shadow(0 0 7px rgba(255, 255, 255, .35));
 }
 
 .mobileHeaderLogo::after {
-  content: "Domain Radar AI";
+  content: "Domain Radar";
   font-size: 15px;
   font-weight: 1000;
-  color: #edf6ff;
+  color: #ffffff;
   letter-spacing: -.02em;
+  text-shadow: 0 0 10px rgba(255, 255, 255, .16);
 }
 
 .loginBrand .loginMark {
   animation: domainRadarLogoSpin 4.5s linear infinite;
+}
+
+.loginBrand span {
+  font-size: 0 !important;
+}
+
+.loginBrand span::after {
+  content: "Domain Radar";
+  font-size: 14px;
+  font-weight: 1000;
+  color: #ffffff;
+  letter-spacing: -.02em;
 }
 
 @keyframes domainRadarLogoSpin {
