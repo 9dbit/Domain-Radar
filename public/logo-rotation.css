@@ -1,60 +1,114 @@
-/* Restored rotating Domain Radar logo treatment */
+/* Domain Radar logo set: green rotating icon + white text lockup */
+:root {
+  --domain-radar-icon-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3Cfilter id='g' x='-35%25' y='-35%25' width='170%25' height='170%25'%3E%3CfeGaussianBlur stdDeviation='2.8' result='b'/%3E%3CfeMerge%3E%3CfeMergeNode in='b'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Cg fill='none' stroke='%237cff00' stroke-linecap='round' stroke-linejoin='round' filter='url(%23g)'%3E%3Cpath stroke-width='8.5' d='M9 57A42 42 0 1 1 71 88'/%3E%3Cpath stroke-width='8.5' d='M23 53A28 28 0 1 1 70 74'/%3E%3Cpath stroke-width='8.5' d='M15 62L58 31a16 16 0 0 1 25 13v44'/%3E%3Cpath stroke-width='8.5' d='M24 74L50 56a10 10 0 0 1 16 8v25'/%3E%3Cpath stroke-width='8.5' d='M34 86L52 73v16'/%3E%3C/g%3E%3C/svg%3E");
+}
+
 aside h1 {
   font-size: 0 !important;
   display: flex !important;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0 0 6px !important;
   letter-spacing: 0 !important;
   line-height: 1 !important;
+  min-height: 42px;
 }
 
 aside h1::before {
   content: "";
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
+  width: 38px;
+  height: 38px;
   display: inline-block;
   flex: 0 0 auto;
-  background: conic-gradient(from 0deg, #ffffff, #bfc7d5, #ffffff, #e8eef7, #ffffff);
-  box-shadow: 0 0 18px rgba(255, 255, 255, .26), inset 0 0 0 5px #05070b;
+  background-image: var(--domain-radar-icon-svg);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 0 10px rgba(124, 255, 0, .45));
   animation: domainRadarLogoSpin 4.5s linear infinite;
 }
 
 aside h1::after {
   content: "Domain Radar";
+  display: inline-block;
+  color: #ffffff;
+  font-family: Impact, Haettenschweiler, 'Arial Black', sans-serif;
   font-size: 20px;
+  font-style: italic;
   font-weight: 1000;
-  letter-spacing: -.04em;
+  letter-spacing: .02em;
   line-height: 1;
   white-space: nowrap;
-  color: #ffffff;
-  text-shadow: 0 0 14px rgba(255, 255, 255, .18);
+  text-transform: uppercase;
+  -webkit-text-stroke: 1.2px #111111;
+  text-shadow: 2px 2px 0 #111111, 0 0 10px rgba(255,255,255,.18);
 }
 
 .mobileHeaderLogo {
   font-size: 0 !important;
+  display: flex !important;
+  align-items: center;
+  gap: 9px;
 }
 
 .mobileHeaderLogo svg {
-  width: 18px;
-  height: 18px;
-  color: #ffffff;
+  display: none !important;
+}
+
+.mobileHeaderLogo::before {
+  content: "";
+  width: 25px;
+  height: 25px;
+  display: inline-block;
+  flex: 0 0 auto;
+  background-image: var(--domain-radar-icon-svg);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 0 7px rgba(124, 255, 0, .42));
   animation: domainRadarLogoSpin 4.5s linear infinite;
-  filter: drop-shadow(0 0 7px rgba(255, 255, 255, .35));
 }
 
 .mobileHeaderLogo::after {
   content: "Domain Radar";
-  font-size: 15px;
-  font-weight: 1000;
+  display: inline-block;
   color: #ffffff;
-  letter-spacing: -.02em;
-  text-shadow: 0 0 10px rgba(255, 255, 255, .16);
+  font-family: Impact, Haettenschweiler, 'Arial Black', sans-serif;
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 1000;
+  letter-spacing: .02em;
+  line-height: 1;
+  white-space: nowrap;
+  text-transform: uppercase;
+  -webkit-text-stroke: .8px #111111;
+  text-shadow: 1.5px 1.5px 0 #111111, 0 0 7px rgba(255,255,255,.18);
+}
+
+.loginBrand {
+  display: flex !important;
+  align-items: center;
+  gap: 13px;
 }
 
 .loginBrand .loginMark {
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: inline-block !important;
+  flex: 0 0 auto;
+  background-image: var(--domain-radar-icon-svg) !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: contain !important;
+  filter: drop-shadow(0 0 14px rgba(124, 255, 0, .48));
   animation: domainRadarLogoSpin 4.5s linear infinite;
+}
+
+.loginBrand .loginMark svg {
+  display: none !important;
 }
 
 .loginBrand span {
@@ -63,10 +117,18 @@ aside h1::after {
 
 .loginBrand span::after {
   content: "Domain Radar";
-  font-size: 14px;
-  font-weight: 1000;
+  display: inline-block;
   color: #ffffff;
-  letter-spacing: -.02em;
+  font-family: Impact, Haettenschweiler, 'Arial Black', sans-serif;
+  font-size: 31px;
+  font-style: italic;
+  font-weight: 1000;
+  letter-spacing: .025em;
+  line-height: 1;
+  white-space: nowrap;
+  text-transform: uppercase;
+  -webkit-text-stroke: 1.8px #111111;
+  text-shadow: 3px 3px 0 #111111, 0 0 13px rgba(255,255,255,.2);
 }
 
 @keyframes domainRadarLogoSpin {
@@ -75,8 +137,13 @@ aside h1::after {
 
 @media (prefers-reduced-motion: reduce) {
   aside h1::before,
-  .mobileHeaderLogo svg,
+  .mobileHeaderLogo::before,
   .loginBrand .loginMark {
     animation: none;
   }
+}
+
+@media (max-width: 640px) {
+  .loginBrand .loginMark { width: 44px !important; height: 44px !important; }
+  .loginBrand span::after { font-size: 24px; -webkit-text-stroke: 1.3px #111111; }
 }
