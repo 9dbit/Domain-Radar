@@ -39,6 +39,12 @@ function readFileTrim(path) {
   try { return fs.readFileSync(path, "utf8").trim(); } catch (_) { return ""; }
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function readSysfsBattery() {
   const basePaths = [
     "/sys/class/power_supply/battery",
@@ -56,7 +62,7 @@ function readSysfsBattery() {
     let tempC = null;
     if (Number.isFinite(tempNumber)) tempC = tempNumber > 100 ? tempNumber / 10 : tempNumber;
     return {
-      battery_percent: Number.isFinite(pct) ? pct : null,
+      battery_percent: Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null,
       is_charging: ["charging", "full"].includes(String(status).toLowerCase()),
       battery_status: status || "sysfs",
       battery_health: health || "unknown",
@@ -66,14 +72,14 @@ function readSysfsBattery() {
   return null;
 }
 
-function getBatteryTelemetry() {
+function readTermuxBattery() {
   try {
     const run = spawnSync("termux-battery-status", [], { encoding: "utf8", timeout: 3000 });
     if (!run.error && run.stdout) {
       const data = JSON.parse(run.stdout);
       const status = String(data.status || "");
       return {
-        battery_percent: typeof data.percentage === "number" ? data.percentage : null,
+        battery_percent: typeof data.percentage === "number" ? Math.max(0, Math.min(100, Math.round(data.percentage))) : null,
         is_charging: status.toUpperCase() === "CHARGING" || status.toUpperCase() === "FULL",
         battery_status: status,
         battery_health: data.health || "",
@@ -81,10 +87,121 @@ function getBatteryTelemetry() {
       };
     }
   } catch (_) {}
+  return null;
+}
 
+function getBatteryTelemetry() {
+  const termux = readTermuxBattery();
   const sysfs = readSysfsBattery();
+
+  if (termux && sysfs) {
+    return {
+      ...termux,
+      battery_percent: sysfs.battery_percent ?? termux.battery_percent,
+      is_charging: sysfs.is_charging ?? termux.is_charging,
+      battery_status: sysfs.battery_status || termux.battery_status,
+      battery_health: sysfs.battery_health || termux.battery_health,
+      battery_temperature_c: sysfs.battery_temperature_c ?? termux.battery_temperature_c
+    };
+  }
   if (sysfs) return sysfs;
+  if (termux) return termux;
   return { battery_percent: null, is_charging: null, battery_status: "unavailable", battery_health: "unknown", battery_temperature_c: null };
+}
+
+function walkNumbers(obj, keys = []) {
+  const found = [];
+  function visit(value, path) {
+    if (value === null || value === undefined) return;
+    if (typeof value === "number") found.push({ path: path.join(".").toLowerCase(), value });
+    if (typeof value === "object") {
+      Object.entries(value).forEach(([k, v]) => visit(v, [...path, k]));
+    }
+  }
+  visit(obj, []);
+  return found.filter((item) => !keys.length || keys.some((key) => item.path.includes(key)));
+}
+
+function normalizeRadioType(value) {
+  const raw = String(value || "").toLowerCase();
+  if (!raw) return "";
+  if (raw.includes("nr") || raw.includes("5g")) return "5g";
+  if (raw.includes("lte") || raw.includes("4g")) return "lte";
+  if (raw.includes("hspa") || raw.includes("hsdpa") || raw.includes("hsupa")) return "hspa";
+  if (raw.includes("umts") || raw.includes("wcdma") || raw.includes("3g")) return "umts";
+  if (raw.includes("edge")) return "edge";
+  if (raw.includes("gprs")) return "gprs";
+  if (raw.includes("gsm") || raw.includes("2g")) return "gsm";
+  if (raw.includes("cdma") || raw.includes("evdo")) return "cdma";
+  return String(value || "").trim();
+}
+
+function radioDisplayLabel(value) {
+  const raw = normalizeRadioType(value);
+  if (!raw) return "";
+  if (raw === "5g") return "5G";
+  if (raw === "lte") return "4G LTE";
+  if (raw === "hspa") return "3G HSPA";
+  if (raw === "umts") return "3G";
+  if (raw === "edge") return "EDGE";
+  if (raw === "gprs") return "GPRS";
+  if (raw === "gsm") return "2G GSM";
+  if (raw === "cdma") return "CDMA";
+  return raw.toUpperCase();
+}
+
+function signalLevelToPercent(level) {
+  const n = toNumberOrNull(level);
+  if (n === null) return null;
+  return Math.max(0, Math.min(100, Math.round((Math.max(0, Math.min(4, n)) / 4) * 100)));
+}
+
+function dbmToPercent(dbm) {
+  const n = toNumberOrNull(dbm);
+  if (n === null) return null;
+  if (n >= -70) return 100;
+  if (n <= -120) return 0;
+  return Math.round(((n + 120) / 50) * 100);
+}
+
+function getSignalTelemetry() {
+  try {
+    const run = spawnSync("termux-telephony-cellinfo", [], { encoding: "utf8", timeout: 3000 });
+    if (run.error || !run.stdout) return {};
+    const parsed = JSON.parse(run.stdout);
+    const cells = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.cells) ? parsed.cells : [parsed];
+    const registered = cells.find((cell) => cell?.registered === true || cell?.isRegistered === true || cell?.registered === "true") || cells[0] || {};
+
+    const radioSource = registered.network_type || registered.networkType || registered.type || registered.cellType || registered.connectionType || registered.radio || registered.radioType || "";
+    const networkType = normalizeRadioType(radioSource);
+    const networkLabel = radioDisplayLabel(networkType || radioSource);
+
+    const dbmCandidate = walkNumbers(registered, ["dbm", "rsrp", "rssi"]).map((x) => x.value).find((v) => v < 0 && v > -200);
+    const asuCandidate = walkNumbers(registered, ["asu"]).map((x) => x.value).find((v) => v >= 0 && v <= 99);
+    const levelCandidate = walkNumbers(registered, ["level"]).map((x) => x.value).find((v) => v >= 0 && v <= 4);
+    const percentFromLevel = signalLevelToPercent(levelCandidate);
+    const percentFromDbm = dbmToPercent(dbmCandidate);
+    const signalPercent = percentFromLevel ?? percentFromDbm;
+
+    return {
+      signal_percent: signalPercent,
+      signal_dbm: toNumberOrNull(dbmCandidate),
+      signal_asu: toNumberOrNull(asuCandidate),
+      signal_level: toNumberOrNull(levelCandidate),
+      signal_label: networkLabel || (signalPercent !== null ? `${signalPercent}%` : ""),
+      network_operator: String(registered.operator || registered.operatorName || registered.carrier || "").slice(0, 120),
+      network_type_label: networkType || String(radioSource || "").toLowerCase()
+    };
+  } catch (_) {
+    return {};
+  }
+}
+
+function getTelemetry() {
+  return {
+    ...getBatteryTelemetry(),
+    ...getSignalTelemetry()
+  };
 }
 
 function classifyNetworkError(err, stage = "HTTP") {
@@ -171,7 +288,7 @@ async function checkDomain(domain) {
 }
 
 async function pollOnce() {
-  const telemetry = getBatteryTelemetry();
+  const telemetry = getTelemetry();
   const net = await getPublicNetworkInfo();
 
   if (!net.ok) {
@@ -191,7 +308,7 @@ async function pollOnce() {
   const { id, domain } = data.task;
   console.log(`[${new Date().toISOString()}] Task ${id}: ${domain}`);
   const result = await checkDomain(domain);
-  await axios.post(`${CENTRAL_URL}/api/agent/result`, { node_name: NODE_NAME, secret_key: AGENT_SECRET, task_id: id, result, telemetry: getBatteryTelemetry() }, { timeout: 30000 });
+  await axios.post(`${CENTRAL_URL}/api/agent/result`, { node_name: NODE_NAME, secret_key: AGENT_SECRET, task_id: id, result, telemetry: getTelemetry() }, { timeout: 30000 });
   console.log(`[${new Date().toISOString()}] Done ${domain}: ${result.status} / ${result.reason}`);
 }
 
@@ -202,7 +319,7 @@ async function loop() {
   console.log(`Provider: ${PROVIDER_NAME}`);
   console.log(`Network: ${NETWORK_TYPE}`);
   console.log(`Expected org: ${EXPECTED_ORG || "not configured"}`);
-  console.log(`Battery telemetry: ${JSON.stringify(getBatteryTelemetry())}`);
+  console.log(`Telemetry: ${JSON.stringify(getTelemetry())}`);
   while (true) {
     try { await pollOnce(); } catch (err) { console.error(`[${new Date().toISOString()}] Poll error: ${err.response?.data?.error || err.code || err.message}`); }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
