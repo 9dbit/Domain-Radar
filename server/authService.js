@@ -129,14 +129,22 @@ async function findUserByEmail(email) {
 
 async function upsertSystemUser({ email, password, role, name, verified = true }) {
   const existing = await findUserByEmail(email);
+  const password_hash = await hashPassword(password);
   if (existing) {
     const { rows } = await pool.query(
-      `UPDATE users SET role=$2, name=COALESCE(NULLIF($3,''), name), email_verified=email_verified OR $4, updated_at=NOW() WHERE email=$1 RETURNING *`,
-      [email, role, name || "", verified]
+      `UPDATE users
+       SET role=$2,
+           name=COALESCE(NULLIF($3,''), name),
+           email_verified=email_verified OR $4,
+           password_hash=$5,
+           suspended=false,
+           updated_at=NOW()
+       WHERE email=$1
+       RETURNING *`,
+      [email, role, name || "", verified, password_hash]
     );
     return rows[0];
   }
-  const password_hash = await hashPassword(password);
   const { rows } = await pool.query(
     `INSERT INTO users (email, password_hash, role, name, email_verified)
      VALUES ($1,$2,$3,$4,$5)
