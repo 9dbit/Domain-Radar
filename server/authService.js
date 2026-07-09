@@ -1,10 +1,18 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { pool } = require("./db");
-const { normalizeEmail, isEmailWhitelistEnabled, isEmailAllowed } = require("./authAllowlist");
+const { normalizeEmail, getAdminEmailWhitelist, isEmailWhitelistEnabled, isEmailAllowed } = require("./authAllowlist");
 const { sendVerificationEmail, sendPasswordResetEmail } = require("./emailService");
 
-const ADMIN_EMAIL = normalizeEmail(process.env.ADMIN_EMAIL || "admin@domain-radar.local");
+function resolveAdminEmail() {
+  const explicit = normalizeEmail(process.env.ADMIN_EMAIL || "");
+  if (explicit) return explicit;
+  const firstWhitelisted = getAdminEmailWhitelist()[0];
+  if (firstWhitelisted) return firstWhitelisted;
+  return "admin@domain-radar.local";
+}
+
+const ADMIN_EMAIL = resolveAdminEmail();
 const DEMO_EMAIL = "demo@domain-radar.org";
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "demo123456";
 const TOKEN_BYTES = 32;
