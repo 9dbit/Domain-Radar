@@ -1,17 +1,20 @@
 const axios = require("axios");
-const { getRuntimeSettings } = require("./runtimeSettings");
+const { getRuntimeSettings: getGlobalRuntimeSettings } = require("./runtimeSettings");
+const { getRuntimeSettings: getStoredRuntimeSettings } = require("./settingsStore");
 const { pool } = require("./db");
 
-function getTelegramConfig() {
-  const settings = getRuntimeSettings();
+async function getTelegramConfig(userId = null) {
+  const settings = userId
+    ? await getStoredRuntimeSettings(userId)
+    : getGlobalRuntimeSettings();
   return {
     token: settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN,
     chatId: settings.telegram_chat_id || process.env.TELEGRAM_CHAT_ID
   };
 }
 
-async function sendTelegram(message, extra = {}) {
-  const { token, chatId } = getTelegramConfig();
+async function sendTelegram(message, extra = {}, userId = null) {
+  const { token, chatId } = await getTelegramConfig(userId);
   if (!token || !chatId) return false;
 
   try {
@@ -29,8 +32,8 @@ async function sendTelegram(message, extra = {}) {
   }
 }
 
-async function answerCallbackQuery(callbackQueryId, text = "Noted") {
-  const { token } = getTelegramConfig();
+async function answerCallbackQuery(callbackQueryId, text = "Noted", userId = null) {
+  const { token } = await getTelegramConfig(userId);
   if (!token || !callbackQueryId) return false;
 
   try {
@@ -46,8 +49,8 @@ async function answerCallbackQuery(callbackQueryId, text = "Noted") {
   }
 }
 
-async function editMessageReplyMarkup(chatId, messageId, replyMarkup = null) {
-  const { token } = getTelegramConfig();
+async function editMessageReplyMarkup(chatId, messageId, replyMarkup = null, userId = null) {
+  const { token } = await getTelegramConfig(userId);
   if (!token || !chatId || !messageId) return false;
 
   try {
@@ -63,18 +66,20 @@ async function editMessageReplyMarkup(chatId, messageId, replyMarkup = null) {
   }
 }
 
-async function sendTelegramToProject(projectName, message, extra = {}) {
-  const { token } = getTelegramConfig();
+async function sendTelegramToProject(projectName, message, extra = {}, userId = null) {
+  const { token } = await getTelegramConfig(userId);
   if (!token) return false;
   let chatId = null;
   try {
+    const params = userId ? [projectName || "", userId] : [projectName || ""];
+    const where = userId ? "project_name=$1 AND user_id=$2" : "project_name=$1";
     const { rows } = await pool.query(
-      "SELECT telegram_chat_id FROM project_telegram_groups WHERE project_name=$1",
-      [projectName || ""]
+      `SELECT telegram_chat_id FROM project_telegram_groups WHERE ${where}`,
+      params
     );
     if (rows[0]) chatId = rows[0].telegram_chat_id;
   } catch (_) {}
-  if (!chatId) return sendTelegram(message, extra);
+  if (!chatId) return sendTelegram(message, extra, userId);
   try {
     await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
       chat_id: chatId,
