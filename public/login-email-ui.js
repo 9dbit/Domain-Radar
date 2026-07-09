@@ -19,7 +19,9 @@
 
   function injectEmailField() {
     const form = document.querySelector(".loginCard");
-    if (!form || form.querySelector("[data-admin-email]")) return;
+    if (!form) return;
+    if (form.querySelector('input[type="email"]')) return;
+    if (form.querySelector("[data-admin-email]")) return;
     const password = form.querySelector('input[type="password"]');
     if (!password) return;
 
