@@ -1,5 +1,6 @@
 const express = require("express");
 const { pool } = require("./db");
+const { requirePlanQuota } = require("./planQuota");
 
 const router = express.Router();
 
@@ -58,7 +59,7 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requirePlanQuota("projects"), async (req, res, next) => {
   try {
     await ensureProjectTable();
     const user = currentUser(req);
