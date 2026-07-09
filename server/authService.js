@@ -114,21 +114,32 @@ async function ensureAuthTables() {
   await ensureColumn("domains", "user_id UUID REFERENCES users(id)");
   await ensureColumn("proxies", "user_id UUID REFERENCES users(id)");
 
+  await pool.query("ALTER TABLE domains DROP CONSTRAINT IF EXISTS domains_domain_key");
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_domains_user_domain ON domains(user_id, domain)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_domains_user_id ON domains(user_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_proxies_user_id ON proxies(user_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_email_tokens_token ON email_tokens(token)");
 }
 
+async function findUserByEmail(email) {
+  const cleanEmail = normalizeEmail(email || "");
+  if (!cleanEmail) return null;
+  return (await pool.query("SELECT * FROM users WHERE email=$1", [cleanEmail])).rows[0] || null;
+}
+
 async function upsertSystemUser({ email, password, role, name, verified = true }) {
+  const existing = await findUserByEmail(email);
+  if (existing) {
+    const { rows } = await pool.query(
+      `UPDATE users SET role=$2, name=COALESCE(NULLIF($3,''), name), email_verified=email_verified OR $4, updated_at=NOW() WHERE email=$1 RETURNING *`,
+      [email, role, name || "", verified]
+    );
+    return rows[0];
+  }
   const password_hash = await hashPassword(password);
   const { rows } = await pool.query(
     `INSERT INTO users (email, password_hash, role, name, email_verified)
      VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (email) DO UPDATE SET
-       role=EXCLUDED.role,
-       name=COALESCE(NULLIF(EXCLUDED.name,''), users.name),
-       email_verified=users.email_verified OR EXCLUDED.email_verified,
-       updated_at=NOW()
      RETURNING *`,
     [email, password_hash, role, name || "", verified]
   );
@@ -187,17 +198,11 @@ async function registerUser(req, { name, email, password }) {
   return { user: publicUser(rows[0]), emailSent };
 }
 
-async function findUserByEmail(email) {
-  const cleanEmail = normalizeEmail(email || "");
-  if (!cleanEmail) return null;
-  return (await pool.query("SELECT * FROM users WHERE email=$1", [cleanEmail])).rows[0] || null;
-}
-
 async function loginUser(req, { email, password }) {
   const cleanEmail = normalizeEmail(email || "");
   const adminPassword = process.env.ADMIN_PASSWORD || "";
 
-  let user = await findUserByEmail(cleanEmail || ADMIN_EMAIL);
+  const user = await findUserByEmail(cleanEmail || ADMIN_EMAIL);
   const legacyAdminLogin = adminPassword && String(password || "") === adminPassword && (!cleanEmail || cleanEmail === ADMIN_EMAIL);
   if (legacyAdminLogin && user?.role === "superadmin") return storeSession(req, user);
 
