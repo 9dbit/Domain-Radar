@@ -4,21 +4,47 @@ const { pool } = require("./db");
 
 const router = express.Router();
 
+function currentUser(req) {
+  return req.user || { userId: req.session?.userId, role: req.session?.role };
+}
+
+function isSuperadmin(req) {
+  return currentUser(req)?.role === "superadmin";
+}
+
+function nodeAccessWhere(req, alias = "") {
+  if (isSuperadmin(req)) return { sql: "TRUE", params: [] };
+  return { sql: `(${alias}user_id=$1 OR ${alias}is_platform_node=true)`, params: [currentUser(req).userId] };
+}
+
+function nodeWriteWhere(req, alias = "") {
+  if (isSuperadmin(req)) return { sql: "TRUE", params: [] };
+  return { sql: `${alias}user_id=$1 AND COALESCE(${alias}is_platform_node,false)=false`, params: [currentUser(req).userId] };
+}
+
 async function ensureNodeTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS provider_nodes (
       id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
+      user_id UUID REFERENCES users(id),
+      name TEXT NOT NULL,
       provider_name TEXT NOT NULL,
       network_type TEXT DEFAULT 'broadband',
       endpoint_url TEXT NOT NULL,
       secret_key TEXT DEFAULT '',
+      is_platform_node BOOLEAN DEFAULT false,
       is_active BOOLEAN DEFAULT TRUE,
       last_health_status TEXT DEFAULT 'unknown',
       last_ping_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id)");
+  await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS is_platform_node BOOLEAN DEFAULT false");
+  await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS last_health_reason TEXT");
+  await pool.query("ALTER TABLE provider_nodes DROP CONSTRAINT IF EXISTS provider_nodes_name_key");
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_nodes_user_name ON provider_nodes(user_id, name)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_provider_nodes_user_id ON provider_nodes(user_id)");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS node_telemetry (
@@ -104,185 +130,139 @@ function enrichNodeForUi(node) {
   if (node.network_type_label) networkTypeParts.push(node.network_type_label);
   if (node.network_operator) networkTypeParts.push(node.network_operator);
   const iconLine = `${networkTypeParts.join(" · ")} · 📶 Signal ${signalLabel} · 🔋 ${batteryLabel} · ⚡ ${chargingLabel}`;
-  return {
-    ...node,
-    raw_provider_name: originalProviderName,
-    raw_network_type: originalNetworkType,
-    raw_battery_percent: rawBatteryPercent,
-    battery_percent: visualBatteryPercent,
-    provider_name: originalProviderName,
-    network_type: iconLine,
-    battery_label: batteryLabel,
-    charging_label: chargingLabel,
-    signal_label: signalLabel,
-    last_seen_label: lastSeenLabel
-  };
+  return { ...node, raw_provider_name: originalProviderName, raw_network_type: originalNetworkType, raw_battery_percent: rawBatteryPercent, battery_percent: visualBatteryPercent, provider_name: originalProviderName, network_type: iconLine, battery_label: batteryLabel, charging_label: chargingLabel, signal_label: signalLabel, last_seen_label: lastSeenLabel };
 }
 
 async function pingNode(node) {
-  if (String(node.endpoint_url || "").toLowerCase().startsWith("poll://")) {
-    return { ok: true, mode: "polling", data: { ok: true, message: "Polling node waits for device agent heartbeat", node_name: node.name } };
-  }
+  if (String(node.endpoint_url || "").toLowerCase().startsWith("poll://")) return { ok: true, mode: "polling", data: { ok: true, message: "Polling node waits for device agent heartbeat", node_name: node.name } };
   const started = Date.now();
   const url = `${cleanBase(node.endpoint_url)}/health`;
-  const { data } = await axios.get(url, {
-    timeout: 12000,
-    headers: node.secret_key ? { "x-domain-radar-secret": node.secret_key } : {}
-  });
+  const { data } = await axios.get(url, { timeout: 12000, headers: node.secret_key ? { "x-domain-radar-secret": node.secret_key } : {} });
   return { ok: true, latency_ms: Date.now() - started, data };
 }
 
 async function getPollingNodeHealth(nodeId) {
-  const { rows } = await pool.query(
-    `SELECT last_seen_at, NOW() - last_seen_at AS age
-     FROM node_telemetry
-     WHERE node_id=$1
-     LIMIT 1`,
-    [nodeId]
-  );
-
+  const { rows } = await pool.query("SELECT last_seen_at FROM node_telemetry WHERE node_id=$1 LIMIT 1", [nodeId]);
   const lastSeenAt = rows[0]?.last_seen_at;
   if (!lastSeenAt) return { health: "waiting", reason: "waiting for device agent heartbeat" };
-
   const ageMs = Date.now() - new Date(lastSeenAt).getTime();
-  if (Number.isFinite(ageMs) && ageMs <= 2 * 60 * 1000) {
-    return { health: "online", reason: "active polling heartbeat" };
-  }
-
+  if (Number.isFinite(ageMs) && ageMs <= 2 * 60 * 1000) return { health: "online", reason: "active polling heartbeat" };
   return { health: "waiting", reason: "polling heartbeat stale" };
 }
 
 router.get("/", async (req, res, next) => {
   try {
     await ensureNodeTable();
+    const access = nodeAccessWhere(req, "n.");
     const { rows } = await pool.query(`
-      SELECT n.*,
-        t.battery_percent,
-        t.is_charging,
-        t.battery_status,
-        t.battery_health,
-        t.battery_temperature_c,
-        t.signal_percent,
-        t.signal_dbm,
-        t.signal_asu,
-        t.signal_level,
-        t.signal_label,
-        t.network_operator,
-        t.network_type_label,
-        t.ip AS telemetry_ip,
-        t.last_seen_at AS telemetry_last_seen_at,
-        t.last_low_battery_alert_at
+      SELECT n.*, t.battery_percent, t.is_charging, t.battery_status, t.battery_health, t.battery_temperature_c,
+        t.signal_percent, t.signal_dbm, t.signal_asu, t.signal_level, t.signal_label, t.network_operator,
+        t.network_type_label, t.ip AS telemetry_ip, t.last_seen_at AS telemetry_last_seen_at, t.last_low_battery_alert_at
       FROM provider_nodes n
       LEFT JOIN node_telemetry t ON t.node_id = n.id
-      ORDER BY n.id DESC
-    `);
+      WHERE ${access.sql}
+      ORDER BY n.is_platform_node DESC, n.id DESC
+    `, access.params);
     res.json(rows.map(enrichNodeForUi));
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
-router.get("/presets", async (req, res) => {
-  res.json(pollingPresets());
-});
+router.get("/presets", async (req, res) => res.json(pollingPresets()));
 
 router.post("/presets", async (req, res, next) => {
   try {
     await ensureNodeTable();
+    const user = currentUser(req);
+    if (user?.role === "demo") return res.status(403).json({ error: "Demo account is read-only" });
     const inserted = [];
     for (const node of pollingPresets()) {
+      const isPlatform = isSuperadmin(req);
+      const ownerId = isPlatform ? null : user.userId;
       const { rows } = await pool.query(
-        `INSERT INTO provider_nodes (name, provider_name, network_type, endpoint_url, secret_key)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (name) DO UPDATE SET provider_name=EXCLUDED.provider_name, network_type=EXCLUDED.network_type, endpoint_url=EXCLUDED.endpoint_url, secret_key=EXCLUDED.secret_key
+        `INSERT INTO provider_nodes (user_id, name, provider_name, network_type, endpoint_url, secret_key, is_platform_node)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (user_id, name) DO UPDATE SET provider_name=EXCLUDED.provider_name, network_type=EXCLUDED.network_type, endpoint_url=EXCLUDED.endpoint_url, secret_key=EXCLUDED.secret_key, is_platform_node=EXCLUDED.is_platform_node
          RETURNING *`,
-        [node.name, node.provider_name, node.network_type, node.endpoint_url, node.secret_key]
+        [ownerId, node.name, node.provider_name, node.network_type, node.endpoint_url, node.secret_key, isPlatform]
       );
       inserted.push(rows[0]);
     }
     res.json({ ok: true, count: inserted.length, nodes: inserted });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 router.post("/", async (req, res, next) => {
   try {
     await ensureNodeTable();
+    const user = currentUser(req);
+    if (user?.role === "demo") return res.status(403).json({ error: "Demo account is read-only" });
     const name = String(req.body.name || "").trim();
     const provider = String(req.body.provider_name || "").trim();
     const network = String(req.body.network_type || "broadband").trim();
     const endpoint = cleanBase(req.body.endpoint_url || "");
     const secret = String(req.body.secret_key || "").trim();
     if (!name || !provider || !endpoint) return res.status(400).json({ error: "Name, provider, and endpoint URL are required" });
-
+    const isPlatform = Boolean(req.body.is_platform_node) && isSuperadmin(req);
+    const ownerId = isPlatform ? null : user.userId;
     const { rows } = await pool.query(
-      `INSERT INTO provider_nodes (name, provider_name, network_type, endpoint_url, secret_key)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (name) DO UPDATE SET provider_name=EXCLUDED.provider_name, network_type=EXCLUDED.network_type, endpoint_url=EXCLUDED.endpoint_url, secret_key=EXCLUDED.secret_key
+      `INSERT INTO provider_nodes (user_id, name, provider_name, network_type, endpoint_url, secret_key, is_platform_node)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (user_id, name) DO UPDATE SET provider_name=EXCLUDED.provider_name, network_type=EXCLUDED.network_type, endpoint_url=EXCLUDED.endpoint_url, secret_key=EXCLUDED.secret_key, is_platform_node=EXCLUDED.is_platform_node
        RETURNING *`,
-      [name, provider, network, endpoint, secret]
+      [ownerId, name, provider, network, endpoint, secret, isPlatform]
     );
     res.json(rows[0]);
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 router.post("/:id/ping", async (req, res, next) => {
   try {
     await ensureNodeTable();
-    const { rows } = await pool.query("SELECT * FROM provider_nodes WHERE id=$1", [req.params.id]);
+    const access = nodeAccessWhere(req);
+    const { rows } = await pool.query(`SELECT * FROM provider_nodes WHERE id=$${access.params.length + 1} AND ${access.sql}`, [...access.params, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: "Node not found" });
-
     try {
       const result = await pingNode(rows[0]);
       let health = "online";
       let reason = "ping ok";
-
       if (result.mode === "polling") {
         const polling = await getPollingNodeHealth(req.params.id);
         health = polling.health;
         reason = polling.reason;
       }
-
-      await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS last_health_reason TEXT");
-      await pool.query(
-        "UPDATE provider_nodes SET last_health_status=$1, last_health_reason=$2, last_ping_at=NOW() WHERE id=$3",
-        [health, reason, req.params.id]
-      );
+      await pool.query("UPDATE provider_nodes SET last_health_status=$1, last_health_reason=$2, last_ping_at=NOW() WHERE id=$3", [health, reason, req.params.id]);
       res.json({ ...result, health, reason });
     } catch (err) {
       await pool.query("UPDATE provider_nodes SET last_health_status='offline', last_ping_at=NOW() WHERE id=$1", [req.params.id]);
       res.json({ ok: false, error: err.message });
     }
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 router.patch("/:id", async (req, res, next) => {
   try {
     await ensureNodeTable();
-    const { is_active } = req.body;
+    const user = currentUser(req);
+    if (user?.role === "demo") return res.status(403).json({ error: "Demo account is read-only" });
+    const write = nodeWriteWhere(req);
     const { rows } = await pool.query(
-      "UPDATE provider_nodes SET is_active=COALESCE($1,is_active) WHERE id=$2 RETURNING *",
-      [is_active, req.params.id]
+      `UPDATE provider_nodes SET is_active=COALESCE($${write.params.length + 1},is_active) WHERE id=$${write.params.length + 2} AND ${write.sql} RETURNING *`,
+      [...write.params, req.body.is_active, req.params.id]
     );
+    if (!rows[0]) return res.status(404).json({ error: "Node not found" });
     res.json(rows[0]);
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 router.delete("/:id", async (req, res, next) => {
   try {
     await ensureNodeTable();
-    await pool.query("DELETE FROM provider_nodes WHERE id=$1", [req.params.id]);
+    const user = currentUser(req);
+    if (user?.role === "demo") return res.status(403).json({ error: "Demo account is read-only" });
+    const write = nodeWriteWhere(req);
+    await pool.query(`DELETE FROM provider_nodes WHERE id=$${write.params.length + 1} AND ${write.sql}`, [...write.params, req.params.id]);
     res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 module.exports = { router, ensureNodeTable, pingNode, cleanBase, pollingPresets };
