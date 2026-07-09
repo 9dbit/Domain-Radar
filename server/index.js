@@ -14,6 +14,7 @@ const rankRoutes = require("./rankRoutes");
 const projectTelegramRoutes = require("./projectTelegramRoutes");
 const trustpositifRoutes = require("./trustpositifRoutes");
 const billingRoutes = require("./billingRoutes");
+const adminRoutes = require("./adminRoutes");
 const { router: nodeRoutes } = require("./nodeRoutes");
 const { router: agentPollRoutes } = require("./agentPollRoutes");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
@@ -83,6 +84,7 @@ app.post("/api/auth/reset-password/:token", async (req, res, next) => { try { re
 app.get("/api/auth/verify-email/:token", async (req, res, next) => { try { const result = await verifyEmail(req.params.token); if (req.accepts("html")) return res.send("Email verified. You can close this tab and log in to Domain Radar."); res.json(result); } catch (err) { next(err); } });
 
 app.use("/api/agent", agentPollRoutes);
+app.use("/api/admin", requireAdmin, attachTenant, adminRoutes);
 app.use("/api/billing", requireAdmin, attachTenant, billingRoutes);
 app.use("/api/settings", requireAdmin, attachTenant, settingsRoutes);
 app.use("/api/projects", requireAdmin, attachTenant, projectRoutes);
