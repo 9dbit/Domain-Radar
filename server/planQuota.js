@@ -25,25 +25,43 @@ async function getPlanContext(userId) {
   return { subscription, plan, usage };
 }
 
-function requirePlanQuota(resource) {
+function limitFor(plan, resource) {
+  const map = {
+    domains: plan.limits.max_domains,
+    projects: plan.limits.max_projects,
+    nodes: plan.limits.max_nodes,
+    rank_groups: plan.limits.max_rank_groups
+  };
+  return map[resource] ?? Infinity;
+}
+
+function currentFor(usage, resource) {
+  const map = {
+    domains: usage.domains,
+    projects: usage.projects,
+    nodes: usage.nodes,
+    rank_groups: usage.rank_groups
+  };
+  return map[resource] ?? 0;
+}
+
+function requirePlanQuota(resource, options = {}) {
   return async (req, res, next) => {
     try {
       const user = req.user || getUser(req);
       if (!user || user.role === "superadmin" || user.isSuperadmin) return next();
+      const increment = typeof options.increment === "function" ? await options.increment(req) : Number(options.increment || 1);
+      const requested = Number.isFinite(increment) && increment > 0 ? increment : 1;
       const { plan, usage } = await getPlanContext(user.userId);
-      const map = {
-        domains: [usage.domains, plan.limits.max_domains],
-        projects: [usage.projects, plan.limits.max_projects],
-        nodes: [usage.nodes, plan.limits.max_nodes],
-        rank_groups: [usage.rank_groups, plan.limits.max_rank_groups]
-      };
-      const [current, limit] = map[resource] || [0, Infinity];
-      if (Number.isFinite(limit) && current >= limit) {
+      const current = currentFor(usage, resource);
+      const limit = limitFor(plan, resource);
+      if (Number.isFinite(limit) && current + requested > limit) {
         return res.status(403).json({
           error: "Upgrade your plan",
           code: "PLAN_LIMIT_REACHED",
           resource,
           current,
+          requested,
           limit,
           plan: plan.id
         });
