@@ -45,11 +45,43 @@ function NodeCard({ node, onPing }) {
 }
 
 function Login({ onLogin }) {
-  const [password, setPassword] = useState("");
+  const token = new URLSearchParams(window.location.search).get("token") || "";
+  const [mode, setMode] = useState(token ? "reset" : "login");
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  async function submit(e) { e.preventDefault(); setLoading(true); setError(""); try { await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) }); await onLogin(); } catch (_) { setError("Password salah atau session tidak valid."); } finally { setLoading(false); } }
-  return <div className="loginPage"><div className="aiOrb one"/><div className="aiOrb two"/><section className="loginHero"><div className="loginBrand"><div className="loginMark"><Sparkles size={24}/></div><span>Domain Radar</span></div><h1>Search defense cockpit for domains, ranks, and provider signals.</h1><p>Monitor domain availability, Google rank shifts, suspicious SERP results, provider node health, battery status, and Telegram alerts from one compact command center.</p><div className="loginFeatures"><span><Network size={15}/> Provider Nodes</span><span><BarChart3 size={15}/> Rank Defense</span><span><Bell size={15}/> Smart Alerts</span></div></section><form className="loginCard" onSubmit={submit}><div className="loginIcon"><Lock size={24}/></div><h2>Secure Access</h2><p>Enter admin password to open the monitoring console.</p><input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Admin password" autoFocus />{error ? <div className="errorBox">{error}</div> : null}<button disabled={loading}>{loading ? "Authenticating..." : "Launch Dashboard"}</button><small>Encrypted session · command layer</small></form></div>;
+  function patch(key, value) { setForm((prev) => ({ ...prev, [key]: value })); }
+  async function submit(e) {
+    e.preventDefault(); setLoading(true); setError(""); setMessage("");
+    try {
+      if (mode === "register") {
+        if (form.password !== form.confirm) throw new Error("Password confirmation does not match.");
+        await api("/api/auth/register", { method: "POST", body: JSON.stringify({ name: form.name, email: form.email, password: form.password }) });
+        setMode("sent"); setMessage("Registration created. Check your email to verify your account.");
+      } else if (mode === "forgot") {
+        await api("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email: form.email }) });
+        setMode("sent"); setMessage("If the email exists, a reset link has been sent.");
+      } else if (mode === "reset") {
+        if (form.password !== form.confirm) throw new Error("Password confirmation does not match.");
+        await api(`/api/auth/reset-password/${encodeURIComponent(token)}`, { method: "POST", body: JSON.stringify({ password: form.password }) });
+        setMode("login"); setMessage("Password updated. Please log in.");
+      } else {
+        await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email: form.email, password: form.password }) });
+        await onLogin();
+      }
+    } catch (err) { setError(err.message || "Authentication failed."); }
+    finally { setLoading(false); }
+  }
+  async function demoLogin() {
+    setLoading(true); setError("");
+    try { await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email: "demo@domain-radar.org", password: "demo123456" }) }); await onLogin(); }
+    catch (err) { setError(err.message || "Demo login failed."); }
+    finally { setLoading(false); }
+  }
+  const title = mode === "register" ? "Create Merchant Account" : mode === "forgot" ? "Reset Access" : mode === "reset" ? "Set New Password" : mode === "sent" ? "Check Your Email" : "Secure Access";
+  const caption = mode === "register" ? "Start a tenant-isolated Domain Radar workspace." : mode === "forgot" ? "Enter your email and we will send a reset link." : mode === "reset" ? "Choose a new password for your account." : mode === "sent" ? "A verification or reset email is on its way if SMTP is configured." : "Log in with email and password. Legacy admin password still works without email.";
+  return <div className="loginPage"><div className="aiOrb one"/><div className="aiOrb two"/><section className="loginHero"><div className="loginBrand"><div className="loginMark"><Sparkles size={24}/></div><span>Domain Radar</span></div><h1>Search defense cockpit for domains, ranks, and provider signals.</h1><p>Monitor domain availability, Google rank shifts, suspicious SERP results, provider node health, battery status, and Telegram alerts from one compact command center.</p><div className="loginFeatures"><span><Network size={15}/> Provider Nodes</span><span><BarChart3 size={15}/> Rank Defense</span><span><Bell size={15}/> Smart Alerts</span></div></section><form className="loginCard" onSubmit={submit}><div className="loginIcon"><Lock size={24}/></div><h2>{title}</h2><p>{caption}</p>{mode === "register" && <input value={form.name} onChange={(e)=>patch("name", e.target.value)} placeholder="Name or company" autoFocus />}{["login","register","forgot"].includes(mode) && <input type="email" value={form.email} onChange={(e)=>patch("email", e.target.value)} placeholder={mode === "login" ? "Email (optional for legacy admin)" : "Email"} autoFocus={mode !== "register"} />}{["login","register","reset"].includes(mode) && <input type="password" value={form.password} onChange={(e)=>patch("password", e.target.value)} placeholder={mode === "login" ? "Password" : "New password"} autoFocus={mode === "reset"} />}{["register","reset"].includes(mode) && <input type="password" value={form.confirm} onChange={(e)=>patch("confirm", e.target.value)} placeholder="Confirm password" />}{error ? <div className="errorBox">{error}</div> : null}{message ? <div className="errorBox" style={{borderColor:"rgba(56,189,248,.35)"}}>{message}</div> : null}{mode !== "sent" && <button disabled={loading}>{loading ? "Working..." : mode === "register" ? "Create Account" : mode === "forgot" ? "Send Reset Link" : mode === "reset" ? "Update Password" : "Launch Dashboard"}</button>}{mode === "login" && <button type="button" className="ghostBtn" onClick={demoLogin} disabled={loading}>Open Demo Account</button>}<div className="loginFeatures" style={{justifyContent:"center",gap:"8px",marginTop:"8px"}}>{mode !== "login" && <button type="button" className="smallBtn" onClick={()=>setMode("login")}>Login</button>}{mode !== "register" && <button type="button" className="smallBtn" onClick={()=>setMode("register")}>Register</button>}{mode !== "forgot" && mode !== "reset" && <button type="button" className="smallBtn" onClick={()=>setMode("forgot")}>Forgot password</button>}</div><small>Tenant session · encrypted command layer</small></form></div>;
 }
 
 function Dashboard({ onLogout }) {
@@ -144,25 +176,10 @@ function Dashboard({ onLogout }) {
   function renderDomainTable(list = filtered) { if (!list.length) { const msg = emptyDomainMessage(); return <div className="emptyState"><b>{msg.title}</b><span>{msg.body}</span></div>; } return <div className="domainListWrap"><table><thead><tr><th>Domain</th><th>Project</th><th>Status</th><th>Prev Status</th><th>Last Checked</th><th>Enabled</th><th>Actions</th></tr></thead><tbody>{list.map((d) => <tr key={d.id}><td><a className="domainCell" href={`https://${d.domain}`} target="_blank" rel="noopener noreferrer">{d.domain}</a></td><td>{d.project_name || "-"}</td><td><Badge status={d.global_status}/></td><td>{formatPendingStatus(d.last_status)}</td><td>{relativeTime(d.last_checked_at)}</td><td>{d.is_active ? "✓" : "✗"}</td><td><div className="actions"><button className="iconBtn" onClick={() => checkD(d)}><RefreshCw size={14}/></button><button className="iconBtn" onClick={() => editD(d)}><Pencil size={14}/></button><button className="iconBtn" onClick={() => toggleD(d)}><Power size={14}/></button><button className="iconBtn danger" onClick={() => delD(d)}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table><div className="domainCards">{list.map((d) => <div key={d.id} className="domainCardRow"><div className="domainCardMain"><a className="domainCell" href={`https://${d.domain}`} target="_blank" rel="noopener noreferrer">{d.domain}</a>{!d.is_active && <span className="muted" style={{fontSize:"10px"}}>(off)</span>}<Badge status={d.global_status}/></div><div className="domainCardBottom"><div className="domainCardMeta"><span>{d.project_name || "No Project"}</span><span>{relativeTime(d.last_checked_at)}</span>{d.last_status ? <span>{formatPendingStatus(d.last_status)}</span> : null}</div><div className="actions"><button className="iconBtn" onClick={() => checkD(d)}><RefreshCw size={14}/></button><button className="iconBtn" onClick={() => editD(d)}><Pencil size={14}/></button><button className="iconBtn" onClick={() => toggleD(d)}><Power size={14}/></button><button className="iconBtn danger" onClick={() => delD(d)}><Trash2 size={14}/></button></div></div></div>)}</div></div>; }
   function renderNodeStatus() { return <section className="panel"><div className="panelHead"><h2><Server size={20}/> Provider Node Health</h2><button className="smallBtn" onClick={() => { setPage("settings"); setTab("nodes"); }}>Open Node Center</button></div>{nodes.length ? <div className="nodeStatusGrid">{nodes.map((n) => <NodeCard key={n.id} node={n} onPing={pingNode}/>)}</div> : <p className="muted">Belum ada node. Tambahkan di Settings → Provider Nodes.</p>}</section>; }
   function reasonLabel(type) {
-    const map = {
-      NORMAL: "✅ Normal",
-      BLOCKED_BY_PROVIDER: "🛡 Provider Block",
-      DNS_ISSUE: "🌐 DNS Issue",
-      SSL_ISSUE: "🔒 SSL Issue",
-      REDIRECT_ISSUE: "🔁 Redirect Issue",
-      TIMEOUT: "⏱ Timeout",
-      HTTP_BLOCK: "🚫 HTTP Block",
-      HOSTING_ISSUE: "🧩 Hosting Issue",
-      NODE_ISSUE: "📡 Node Issue",
-      TECHNICAL_WARNING: "⚠️ Technical Warning",
-      UNKNOWN: "❔ Unknown"
-    };
+    const map = { NORMAL: "✅ Normal", BLOCKED_BY_PROVIDER: "🛡 Provider Block", DNS_ISSUE: "🌐 DNS Issue", SSL_ISSUE: "🔒 SSL Issue", REDIRECT_ISSUE: "🔁 Redirect Issue", TIMEOUT: "⏱ Timeout", HTTP_BLOCK: "🚫 HTTP Block", HOSTING_ISSUE: "🧩 Hosting Issue", NODE_ISSUE: "📡 Node Issue", TECHNICAL_WARNING: "⚠️ Technical Warning", UNKNOWN: "❔ Unknown" };
     return map[type] || type || "Unknown";
   }
-  function renderReasonAnalytics() {
-    const items = Object.entries(reasonAnalytics).sort((a,b)=>b[1]-a[1]);
-    return <section className="panel reasonPanel"><div className="panelHead"><h2>Reason Analytics</h2><span className="muted">Breakdown penyebab status domain</span></div><div className="reasonGrid">{items.map(([type,count]) => <button key={type} className={reasonFilter === type ? "reasonCard activeReason" : "reasonCard"} onClick={() => setReasonFilter(reasonFilter === type ? "all" : type)}><b>{count}</b><span>{reasonLabel(type)}</span></button>)}</div></section>;
-  }
+  function renderReasonAnalytics() { const items = Object.entries(reasonAnalytics).sort((a,b)=>b[1]-a[1]); return <section className="panel reasonPanel"><div className="panelHead"><h2>Reason Analytics</h2><span className="muted">Breakdown penyebab status domain</span></div><div className="reasonGrid">{items.map(([type,count]) => <button key={type} className={reasonFilter === type ? "reasonCard activeReason" : "reasonCard"} onClick={() => setReasonFilter(reasonFilter === type ? "all" : type)}><b>{count}</b><span>{reasonLabel(type)}</span></button>)}</div></section>; }
   function renderHistory() { return <section className="panel"><div className="panelHead"><h2>Latest Check History</h2><div className="tabs"><button className={historyFilter === "all" ? "navActive" : ""} onClick={() => setHistoryFilter("all")}>All</button><button className={historyFilter === "node" ? "navActive" : ""} onClick={() => setHistoryFilter("node")}>Nodes</button><button className={historyFilter === "proxy" ? "navActive" : ""} onClick={() => setHistoryFilter("proxy")}>Proxy</button><button className={historyFilter === "direct" ? "navActive" : ""} onClick={() => setHistoryFilter("direct")}>Direct</button><select value={reasonFilter} onChange={(e) => setReasonFilter(e.target.value)}><option value="all">All reasons</option>{Object.keys(reasonAnalytics).sort().map((r) => <option key={r} value={r}>{reasonLabel(r)}</option>)}</select><button className="smallBtn" onClick={() => csv("/api/export/results.csv")}><Download size={15}/> CSV</button></div></div><table><thead><tr><th>Time</th><th>Domain</th><th>Provider</th><th>Type</th><th>Status</th><th>HTTP</th><th>Latency</th><th>Reason</th></tr></thead><tbody>{historyRows.slice(0, 60).map((r) => <tr key={r.id}><td>{r.checked_at ? new Date(r.checked_at).toLocaleString() : "-"}</td><td className="domainCell">{r.domain || "-"}</td><td>{r.provider_name || "-"}</td><td>{r.checker_type || "-"}</td><td><Badge status={r.status}/></td><td>{r.http_status || "-"}</td><td>{r.latency_ms ? `${r.latency_ms}ms` : "-"}</td><td>{r.reason || "-"}</td></tr>)}</tbody></table>{!historyRows.length ? <p className="muted">Belum ada history. Klik refresh pada domain atau Manual Check All.</p> : null}</section>; }
   function renderProjectDomainBox(name) { const input = getProjectInput(name); return <div className="projectAddBox"><div className="projectAddRow"><input value={input.domain} onChange={(e) => setProjectInput(name, { domain: e.target.value })} placeholder={`Add domain to ${name}`} /><button type="button" onClick={() => addDomainToProject(name)}>Add</button></div><textarea value={input.bulk} onChange={(e) => setProjectInput(name, { bulk: e.target.value })} placeholder={`Bulk import to ${name}\nexample.com\nexample.net`} /><button type="button" onClick={() => bulkImportToProject(name)}>Bulk Import to {name}</button></div>; }
   function renderDashboardPage() { return <>{renderCards()}{renderReasonAnalytics()}{renderNodeStatus()}{renderAlerts()}<section className="panel"><div className="panelHead"><h2>Domains</h2><button className="smallBtn" onClick={() => csv("/api/export/domains.csv")}><Download size={15}/> CSV</button></div><div className="filters"><div className="searchBox"><Search size={15}/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search domain or project..." /></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All Status</option><option value="working">Normal</option><option value="warning">Warning</option><option value="blocked">Blocked</option></select><select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="all">All Projects</option>{projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}</select></div>{renderDomainTable()}</section>{renderHistory()}</>; }
@@ -175,7 +192,7 @@ function Dashboard({ onLogout }) {
 
 function App() {
   const [authed, setAuthed] = useState(null);
-  async function check() { try { await api("/api/auth/me"); setAuthed(true); } catch (_) { setAuthed(false); } }
+  async function check() { try { const me = await api("/api/auth/me"); setAuthed(Boolean(me.authenticated)); } catch (_) { setAuthed(false); } }
   useEffect(() => { check(); }, []);
   if (authed === null) return <div className="loading">Loading Domain Radar...</div>;
   return authed ? <Dashboard onLogout={() => setAuthed(false)} /> : <Login onLogin={check} />;
