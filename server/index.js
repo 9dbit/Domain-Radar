@@ -13,10 +13,13 @@ const projectRoutes = require("./projectRoutes");
 const rankRoutes = require("./rankRoutes");
 const projectTelegramRoutes = require("./projectTelegramRoutes");
 const trustpositifRoutes = require("./trustpositifRoutes");
+const billingRoutes = require("./billingRoutes");
 const { router: nodeRoutes } = require("./nodeRoutes");
 const { router: agentPollRoutes } = require("./agentPollRoutes");
 const { getActiveNodes, checkViaNode } = require("./nodeChecker");
 const { loadSettings } = require("./settingsStore");
+const { ensureBillingTables } = require("./billingStore");
+const { requirePlanQuota } = require("./planQuota");
 const { sendTelegram, answerCallbackQuery, editMessageReplyMarkup } = require("./telegram");
 const { markAcknowledged } = require("./noticeState");
 const { isEmailWhitelistEnabled } = require("./authAllowlist");
@@ -49,7 +52,7 @@ function ownerScope(req, alias = "") { const user = getUser(req); if (user?.isSu
 
 async function runSingleDomainCheck(domainRow) {
   const proxies = (await pool.query("SELECT * FROM proxies WHERE is_active=true AND (user_id=$1 OR user_id IS NULL)", [domainRow.user_id || null])).rows;
-  const nodes = await getActiveNodes();
+  const nodes = await getActiveNodes(domainRow.user_id || null);
   const checks = [checkDomain(domainRow.domain, { type: "direct", provider_name: "Direct" })];
   for (const proxy of proxies) checks.push(checkDomain(domainRow.domain, { type: "proxy", provider_name: proxy.provider_name || proxy.name, proxy }));
   for (const node of nodes) checks.push(checkViaNode(domainRow.domain, node));
@@ -63,7 +66,7 @@ async function runSingleDomainCheck(domainRow) {
   await pool.query("UPDATE domains SET last_status=$1, global_status=$2, last_checked_at=NOW() WHERE id=$3", [oldStatus, newStatus, domainRow.id]);
   if (oldStatus !== newStatus) {
     const message = `DOMAIN STATUS CHANGED\n\nDomain: ${domainRow.domain}\nOld: ${oldStatus}\nNew: ${newStatus}\nMode: Single manual check`;
-    const sent = await sendTelegram(message);
+    const sent = await sendTelegram(message, {}, domainRow.user_id || null);
     await pool.query("INSERT INTO alerts (domain_id, old_status, new_status, message, sent_to_telegram) VALUES ($1,$2,$3,$4,$5)", [domainRow.id, oldStatus, newStatus, message, sent]);
   }
   return { old_status: oldStatus, new_status: newStatus, results };
@@ -79,6 +82,7 @@ app.post("/api/auth/reset-password/:token", async (req, res, next) => { try { re
 app.get("/api/auth/verify-email/:token", async (req, res, next) => { try { const result = await verifyEmail(req.params.token); if (req.accepts("html")) return res.send("Email verified. You can close this tab and log in to Domain Radar."); res.json(result); } catch (err) { next(err); } });
 
 app.use("/api/agent", agentPollRoutes);
+app.use("/api/billing", requireAdmin, attachTenant, billingRoutes);
 app.use("/api/settings", requireAdmin, attachTenant, settingsRoutes);
 app.use("/api/projects", requireAdmin, attachTenant, projectRoutes);
 app.use("/api/rank", requireAdmin, attachTenant, rankRoutes);
@@ -119,11 +123,11 @@ app.post("/api/telegram/webhook", async (req, res) => {
   }
 });
 
-app.post("/api/telegram/test", requireAdmin, async (req, res) => { const message = `DOMAIN RADAR TEST\n\nTelegram alert is working.\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`; const sent = await sendTelegram(message); res.json({ ok: sent }); });
+app.post("/api/telegram/test", requireAdmin, async (req, res) => { const user = getUser(req); const message = `DOMAIN RADAR TEST\n\nTelegram alert is working.\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`; const sent = await sendTelegram(message, {}, user?.userId || null); res.json({ ok: sent }); });
 app.get("/api/overview", requireAdmin, async (req, res) => { const scope = ownerScope(req); const { rows } = await pool.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE global_status='working')::int AS working, COUNT(*) FILTER (WHERE global_status='warning')::int AS warning, COUNT(*) FILTER (WHERE global_status='blocked')::int AS blocked, MAX(last_checked_at) AS last_checked FROM domains ${scope.where}`, scope.params); res.json(rows[0]); });
 app.get("/api/alerts", requireAdmin, async (req, res) => { const user = getUser(req); const where = user?.isSuperadmin ? "" : "WHERE d.user_id=$1"; const params = user?.isSuperadmin ? [] : [user.userId]; const { rows } = await pool.query(`SELECT a.*, d.domain, d.project_name FROM alerts a LEFT JOIN domains d ON d.id = a.domain_id ${where} ORDER BY a.created_at DESC LIMIT 100`, params); res.json(rows); });
 app.get("/api/domains", requireAdmin, async (req, res) => { const scope = ownerScope(req); const { rows } = await pool.query(`SELECT * FROM domains ${scope.where} ORDER BY id DESC`, scope.params); res.json(rows); });
-app.post("/api/domains", requireAdmin, requireNotDemo, async (req, res) => { const user = getUser(req); const domain = normalizeDomain(req.body.domain || ""); const project = req.body.project_name || ""; if (!domain) return res.status(400).json({ error: "Domain required" }); const { rows } = await pool.query(`INSERT INTO domains (user_id, domain, project_name) VALUES ($1,$2,$3) ON CONFLICT (user_id, domain) DO UPDATE SET project_name=EXCLUDED.project_name RETURNING *`, [user.userId, domain, project]); res.json(rows[0]); });
+app.post("/api/domains", requireAdmin, requireNotDemo, requirePlanQuota("domains"), async (req, res) => { const user = getUser(req); const domain = normalizeDomain(req.body.domain || ""); const project = req.body.project_name || ""; if (!domain) return res.status(400).json({ error: "Domain required" }); const { rows } = await pool.query(`INSERT INTO domains (user_id, domain, project_name) VALUES ($1,$2,$3) ON CONFLICT (user_id, domain) DO UPDATE SET project_name=EXCLUDED.project_name RETURNING *`, [user.userId, domain, project]); res.json(rows[0]); });
 app.post("/api/domains/bulk", requireAdmin, requireNotDemo, async (req, res) => { const user = getUser(req); const items = String(req.body.text || "").split(/\r?\n/).map(parseBulkLine).filter((x) => x && x.domain); const inserted = []; for (const item of items) { const { rows } = await pool.query(`INSERT INTO domains (user_id, domain, project_name) VALUES ($1,$2,$3) ON CONFLICT (user_id, domain) DO UPDATE SET project_name=COALESCE(NULLIF(EXCLUDED.project_name,''), domains.project_name) RETURNING *`, [user.userId, item.domain, item.project_name]); if (rows[0]) inserted.push(rows[0]); } res.json({ inserted_count: inserted.length, inserted }); });
 app.patch("/api/domains/:id", requireAdmin, requireNotDemo, async (req, res) => { const user = getUser(req); const { domain, is_active, project_name } = req.body; const cleanDomain = domain !== undefined ? normalizeDomain(domain) : undefined; const userClause = user.isSuperadmin ? "" : "AND user_id=$5"; const params = user.isSuperadmin ? [cleanDomain || null, is_active, project_name, req.params.id] : [cleanDomain || null, is_active, project_name, req.params.id, user.userId]; const { rows } = await pool.query(`UPDATE domains SET domain=COALESCE($1,domain), is_active=COALESCE($2,is_active), project_name=COALESCE($3,project_name) WHERE id=$4 ${userClause} RETURNING *`, params); res.json(rows[0]); });
 app.delete("/api/domains/:id", requireAdmin, requireNotDemo, async (req, res) => { const user = getUser(req); if (user.isSuperadmin) await pool.query("DELETE FROM domains WHERE id=$1", [req.params.id]); else await pool.query("DELETE FROM domains WHERE id=$1 AND user_id=$2", [req.params.id, user.userId]); res.json({ ok: true }); });
@@ -141,5 +145,5 @@ const distPath = path.join(__dirname, "../dist");
 app.use(express.static(distPath));
 app.get("*", (req, res) => { const indexPath = path.join(distPath, "index.html"); if (fs.existsSync(indexPath)) return res.sendFile(indexPath); res.json({ ok: true, message: "API server is running. Run npm run client for the dashboard during development." }); });
 const port = process.env.PORT || 3000;
-async function boot() { try { await ensureSystemUsers(); await loadSettings(); console.log("Auth and settings loaded from database"); } catch (err) { console.error("Boot migration/settings load failed, using env defaults:", err.message); } app.listen(port, () => { console.log(`Server running on ${port}`); startScheduler(); }); }
+async function boot() { try { await ensureSystemUsers(); await loadSettings(); await ensureBillingTables(); console.log("Auth, settings, and billing loaded from database"); } catch (err) { console.error("Boot migration/settings load failed, using env defaults:", err.message); } app.listen(port, () => { console.log(`Server running on ${port}`); startScheduler(); }); }
 boot();
