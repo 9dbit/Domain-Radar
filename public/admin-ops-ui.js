@@ -76,11 +76,21 @@
     if (state.selected === merchant.id) await loadDetail(merchant.id);
   }
 
+  async function sendReset(merchant) {
+    if (!confirm(`Send password reset email to ${merchant.email}?`)) return;
+    const result = await api(`/api/admin/merchants/${encodeURIComponent(merchant.id)}/send-reset`, { method: "POST" });
+    alert(result.emailSent ? "Password reset email sent." : "Reset token created, but email delivery is not configured or failed.");
+  }
+
   async function confirmInvoice(invoiceId) {
     if (!confirm("Manually confirm this invoice as paid?")) return;
     await api(`/api/admin/invoices/${encodeURIComponent(invoiceId)}/confirm`, { method: "POST" });
     await load();
     if (state.selected) await loadDetail(state.selected);
+  }
+
+  function openCsv(path) {
+    window.open(path, "_blank", "noopener,noreferrer");
   }
 
   function openPanel() {
@@ -162,6 +172,7 @@
         <button type="button" data-plan="free">Set Free</button>
         <button type="button" data-plan="starter">Set Starter</button>
         <button type="button" data-plan="pro">Set Pro</button>
+        <button type="button" data-send-reset="${merchant.id}">Send Reset</button>
       </div>
       <h3>Invoices</h3>
       <div class="adminInvoiceList">${invoices.length ? invoices.map(invoiceBlock).join("") : '<p class="adminMuted">No invoices yet.</p>'}</div>
@@ -174,7 +185,14 @@
     if (!panel) return;
     panel.innerHTML = `
       <button class="adminOpsClose" type="button">×</button>
-      <div class="adminOpsHead"><div><p class="adminEyebrow">Platform cockpit</p><h2>Superadmin Billing Ops</h2></div><button type="button" data-refresh>Refresh</button></div>
+      <div class="adminOpsHead">
+        <div><p class="adminEyebrow">Platform cockpit</p><h2>Superadmin Billing Ops</h2></div>
+        <div class="adminTopActions">
+          <button type="button" data-export-merchants>Export Merchants</button>
+          <button type="button" data-export-invoices>Export Invoices</button>
+          <button type="button" data-refresh>Refresh</button>
+        </div>
+      </div>
       ${state.error ? `<div class="adminError">${state.error}</div>` : ""}
       ${metricCards()}
       <div class="adminOpsGrid">
@@ -187,12 +205,18 @@
     `;
     panel.querySelector(".adminOpsClose").addEventListener("click", closePanel);
     panel.querySelector("[data-refresh]").addEventListener("click", load);
+    panel.querySelector("[data-export-merchants]").addEventListener("click", () => openCsv("/api/admin/merchants.csv"));
+    panel.querySelector("[data-export-invoices]").addEventListener("click", () => openCsv("/api/admin/invoices.csv"));
     panel.querySelectorAll("[data-merchant]").forEach((btn) => btn.addEventListener("click", () => loadDetail(btn.getAttribute("data-merchant"))));
     panel.querySelectorAll("[data-plan]").forEach((btn) => btn.addEventListener("click", () => changePlan(state.selected, btn.getAttribute("data-plan"))));
     panel.querySelectorAll("[data-confirm-invoice]").forEach((btn) => btn.addEventListener("click", () => confirmInvoice(btn.getAttribute("data-confirm-invoice"))));
     panel.querySelectorAll("[data-suspend]").forEach((btn) => {
       const merchant = state.detail?.merchant;
       btn.addEventListener("click", () => merchant && toggleSuspend(merchant));
+    });
+    panel.querySelectorAll("[data-send-reset]").forEach((btn) => {
+      const merchant = state.detail?.merchant;
+      btn.addEventListener("click", () => merchant && sendReset(merchant));
     });
   }
 

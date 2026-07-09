@@ -3,7 +3,7 @@ const { pool } = require("./db");
 const { getPlan, listPlans } = require("./plans");
 const { ensureBillingTables, markInvoicePaid } = require("./billingStore");
 const { getUsage } = require("./planQuota");
-const { getUser } = require("./authService");
+const { getUser, requestPasswordReset } = require("./authService");
 
 const router = express.Router();
 
@@ -15,6 +15,20 @@ function isSuperadmin(req) {
 function requireSuperadmin(req, res, next) {
   if (isSuperadmin(req)) return next();
   return res.status(403).json({ error: "Superadmin only" });
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return "";
+  const text = String(value).replace(/"/g, '""');
+  return /[",\n\r]/.test(text) ? `"${text}"` : text;
+}
+
+function sendCsv(res, filename, rows) {
+  const headers = rows.length ? Object.keys(rows[0]) : [];
+  const body = [headers.join(",")].concat(rows.map((row) => headers.map((h) => csvEscape(row[h])).join(","))).join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename=\"${filename}\"`);
+  res.send(body);
 }
 
 async function ensureUserAdminColumns() {
@@ -63,6 +77,48 @@ router.get("/merchants", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.get("/merchants.csv", async (req, res, next) => {
+  try {
+    await ensureBillingTables();
+    await ensureUserAdminColumns();
+    const { rows } = await pool.query(`
+      SELECT u.email, u.name, u.role, u.email_verified, u.suspended, COALESCE(s.plan,'free') AS plan,
+        COALESCE(s.status,'active') AS subscription_status, s.current_period_end,
+        COUNT(i.id)::int AS invoice_count,
+        COUNT(i.id) FILTER (WHERE i.status='paid')::int AS paid_invoice_count,
+        COUNT(i.id) FILTER (WHERE i.status='pending')::int AS pending_invoice_count,
+        u.last_active_at, u.created_at
+      FROM users u
+      LEFT JOIN subscriptions s ON s.user_id=u.id
+      LEFT JOIN billing_invoices i ON i.user_id=u.id
+      WHERE u.role <> 'superadmin'
+      GROUP BY u.id, s.plan, s.status, s.current_period_end
+      ORDER BY u.created_at DESC
+    `);
+    const out = [];
+    for (const row of rows) {
+      const usage = await merchantUsage((await pool.query("SELECT id FROM users WHERE email=$1", [row.email])).rows[0]?.id);
+      out.push({ ...row, domains: usage.domains, projects: usage.projects, nodes: usage.nodes, rank_groups: usage.rank_groups });
+    }
+    sendCsv(res, "merchants.csv", out);
+  } catch (err) { next(err); }
+});
+
+router.get("/invoices.csv", async (req, res, next) => {
+  try {
+    await ensureBillingTables();
+    const { rows } = await pool.query(`
+      SELECT i.id, u.email, i.plan, i.amount_idr, i.currency, i.status, i.gateway, i.gateway_reference, i.payment_url,
+        i.expires_at, i.paid_at, i.created_at
+      FROM billing_invoices i
+      LEFT JOIN users u ON u.id=i.user_id
+      ORDER BY i.created_at DESC
+      LIMIT 5000
+    `);
+    sendCsv(res, "billing-invoices.csv", rows);
+  } catch (err) { next(err); }
+});
+
 router.get("/merchants/:id", async (req, res, next) => {
   try {
     await ensureBillingTables();
@@ -104,6 +160,16 @@ router.patch("/merchants/:id", async (req, res, next) => {
     const { rows } = await pool.query(`UPDATE users SET ${updates.join(", ")}, updated_at=NOW() WHERE id=$${values.length} AND role <> 'superadmin' RETURNING id,email,name,role,email_verified,suspended,last_active_at,created_at`, values);
     if (!rows[0]) return res.status(404).json({ error: "Merchant not found" });
     res.json({ ok: true, merchant: rows[0] });
+  } catch (err) { next(err); }
+});
+
+router.post("/merchants/:id/send-reset", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query("SELECT email FROM users WHERE id=$1 AND role <> 'superadmin' LIMIT 1", [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Merchant not found" });
+    const result = await requestPasswordReset(req, rows[0].email);
+    await pool.query(`INSERT INTO billing_events (user_id, event_type, raw) VALUES ($1,'merchant.password_reset_requested',$2::jsonb)`, [req.params.id, JSON.stringify({ by: getUser(req)?.email || "superadmin", emailSent: result.emailSent })]).catch(() => {});
+    res.json({ ok: true, ...result });
   } catch (err) { next(err); }
 });
 
