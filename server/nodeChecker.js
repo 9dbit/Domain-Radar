@@ -3,22 +3,37 @@ const { pool } = require("./db");
 const { cleanBase } = require("./nodeRoutes");
 const { enqueueNodeTask, waitForNodeTask } = require("./agentPollRoutes");
 
-async function getActiveNodes() {
+async function ensureProviderNodeTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS provider_nodes (
+      id SERIAL PRIMARY KEY,
+      user_id UUID REFERENCES users(id),
+      name TEXT NOT NULL,
+      provider_name TEXT NOT NULL,
+      network_type TEXT DEFAULT 'broadband',
+      endpoint_url TEXT NOT NULL,
+      secret_key TEXT DEFAULT '',
+      is_platform_node BOOLEAN DEFAULT false,
+      is_active BOOLEAN DEFAULT TRUE,
+      last_health_status TEXT DEFAULT 'unknown',
+      last_ping_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id)");
+  await pool.query("ALTER TABLE provider_nodes ADD COLUMN IF NOT EXISTS is_platform_node BOOLEAN DEFAULT false");
+}
+
+async function getActiveNodes(userId = null) {
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS provider_nodes (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        provider_name TEXT NOT NULL,
-        network_type TEXT DEFAULT 'broadband',
-        endpoint_url TEXT NOT NULL,
-        secret_key TEXT DEFAULT '',
-        is_active BOOLEAN DEFAULT TRUE,
-        last_health_status TEXT DEFAULT 'unknown',
-        last_ping_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
+    await ensureProviderNodeTable();
+    if (userId) {
+      const { rows } = await pool.query(
+        "SELECT * FROM provider_nodes WHERE is_active=true AND (user_id=$1 OR is_platform_node=true) ORDER BY is_platform_node DESC, id ASC",
+        [userId]
+      );
+      return rows;
+    }
     const { rows } = await pool.query("SELECT * FROM provider_nodes WHERE is_active=true ORDER BY id ASC");
     return rows;
   } catch (err) {
