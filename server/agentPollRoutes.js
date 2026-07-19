@@ -40,6 +40,10 @@ async function ensureTaskTable() {
       signal_label TEXT,
       network_operator TEXT,
       network_type_label TEXT,
+      quota_remaining_gb NUMERIC,
+      quota_total_gb NUMERIC,
+      quota_expires_at TEXT,
+      quota_label TEXT,
       ip TEXT,
       user_agent TEXT,
       last_seen_at TIMESTAMP DEFAULT NOW(),
@@ -53,6 +57,10 @@ async function ensureTaskTable() {
   await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_label TEXT");
   await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_operator TEXT");
   await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_type_label TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_remaining_gb NUMERIC");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_total_gb NUMERIC");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_expires_at TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_label TEXT");
 }
 
 function cleanName(name) {
@@ -74,6 +82,19 @@ function toNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function cleanQuotaDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.slice(0, 40);
+}
+
+function quotaLabel(raw, remaining, total) {
+  if (raw.quota_label) return String(raw.quota_label).slice(0, 120);
+  if (Number.isFinite(remaining) && Number.isFinite(total)) return `${remaining} GB / ${total} GB`;
+  if (Number.isFinite(remaining)) return `${remaining} GB`;
+  return "";
+}
+
 function normalizeTelemetry(raw = {}) {
   const batteryPercent = toNumberOrNull(raw.battery_percent);
   const temp = toNumberOrNull(raw.battery_temperature_c);
@@ -81,6 +102,8 @@ function normalizeTelemetry(raw = {}) {
   const signalDbm = toNumberOrNull(raw.signal_dbm);
   const signalAsu = toNumberOrNull(raw.signal_asu);
   const signalLevel = toNumberOrNull(raw.signal_level);
+  const quotaRemaining = toNumberOrNull(raw.quota_remaining_gb);
+  const quotaTotal = toNumberOrNull(raw.quota_total_gb);
 
   const clippedSignalPercent = Number.isFinite(signalPercent)
     ? Math.max(0, Math.min(100, Math.round(signalPercent)))
@@ -98,7 +121,11 @@ function normalizeTelemetry(raw = {}) {
     signal_level: Number.isFinite(signalLevel) ? Math.max(0, Math.min(4, Math.round(signalLevel))) : null,
     signal_label: raw.signal_label ? String(raw.signal_label).slice(0, 80) : "",
     network_operator: raw.network_operator ? String(raw.network_operator).slice(0, 120) : "",
-    network_type_label: raw.network_type_label ? String(raw.network_type_label).slice(0, 80) : ""
+    network_type_label: raw.network_type_label ? String(raw.network_type_label).slice(0, 80) : "",
+    quota_remaining_gb: Number.isFinite(quotaRemaining) ? Math.max(0, quotaRemaining) : null,
+    quota_total_gb: Number.isFinite(quotaTotal) ? Math.max(0, quotaTotal) : null,
+    quota_expires_at: cleanQuotaDate(raw.quota_expires_at),
+    quota_label: quotaLabel(raw, quotaRemaining, quotaTotal)
   };
 }
 
@@ -112,9 +139,10 @@ async function upsertTelemetry(node, telemetryRaw, req) {
     `INSERT INTO node_telemetry (
         node_id, battery_percent, is_charging, battery_status, battery_health, battery_temperature_c,
         signal_percent, signal_dbm, signal_asu, signal_level, signal_label, network_operator, network_type_label,
+        quota_remaining_gb, quota_total_gb, quota_expires_at, quota_label,
         ip, user_agent, last_seen_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW())
       ON CONFLICT (node_id) DO UPDATE SET
         battery_percent=EXCLUDED.battery_percent,
         is_charging=EXCLUDED.is_charging,
@@ -128,6 +156,10 @@ async function upsertTelemetry(node, telemetryRaw, req) {
         signal_label=EXCLUDED.signal_label,
         network_operator=EXCLUDED.network_operator,
         network_type_label=EXCLUDED.network_type_label,
+        quota_remaining_gb=COALESCE(EXCLUDED.quota_remaining_gb, node_telemetry.quota_remaining_gb),
+        quota_total_gb=COALESCE(EXCLUDED.quota_total_gb, node_telemetry.quota_total_gb),
+        quota_expires_at=COALESCE(NULLIF(EXCLUDED.quota_expires_at,''), node_telemetry.quota_expires_at),
+        quota_label=COALESCE(NULLIF(EXCLUDED.quota_label,''), node_telemetry.quota_label),
         ip=EXCLUDED.ip,
         user_agent=EXCLUDED.user_agent,
         last_seen_at=NOW()`,
@@ -145,6 +177,10 @@ async function upsertTelemetry(node, telemetryRaw, req) {
       telemetry.signal_label,
       telemetry.network_operator,
       telemetry.network_type_label,
+      telemetry.quota_remaining_gb,
+      telemetry.quota_total_gb,
+      telemetry.quota_expires_at,
+      telemetry.quota_label,
       String(ip).slice(0, 200),
       String(userAgent).slice(0, 300)
     ]
@@ -157,9 +193,7 @@ async function upsertTelemetry(node, telemetryRaw, req) {
     if (!last || Date.now() - last > cooldownMs) {
       const message = `LOW BATTERY ALERT\n\nNode: ${node.name}\nProvider: ${node.provider_name}\nNetwork: ${node.network_type}\nBattery: ${telemetry.battery_percent}%\nCharging: No\nStatus: ${telemetry.battery_status || "unknown"}\nHealth: ${telemetry.battery_health || "unknown"}\nTime: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`;
       const sent = await sendTelegram(message);
-      if (sent) {
-        await pool.query("UPDATE node_telemetry SET last_low_battery_alert_at=NOW() WHERE node_id=$1", [node.id]);
-      }
+      if (sent) await pool.query("UPDATE node_telemetry SET last_low_battery_alert_at=NOW() WHERE node_id=$1", [node.id]);
     }
   }
 }
@@ -173,10 +207,7 @@ function normalizeDomainStatus(status) {
 }
 
 async function syncDomainStatusFromTask(taskId, node, result) {
-  const { rows } = await pool.query(
-    "SELECT domain FROM provider_node_tasks WHERE id=$1 AND node_id=$2 LIMIT 1",
-    [taskId, node.id]
-  );
+  const { rows } = await pool.query("SELECT domain FROM provider_node_tasks WHERE id=$1 AND node_id=$2 LIMIT 1", [taskId, node.id]);
   const domain = rows[0]?.domain;
   if (!domain) return;
 
@@ -197,10 +228,7 @@ async function syncDomainStatusFromTask(taskId, node, result) {
 async function enqueueNodeTask(node, domain) {
   await ensureTaskTable();
   const id = randomUUID();
-  await pool.query(
-    "INSERT INTO provider_node_tasks (id, node_id, domain, status) VALUES ($1,$2,$3,'queued')",
-    [id, node.id, domain]
-  );
+  await pool.query("INSERT INTO provider_node_tasks (id, node_id, domain, status) VALUES ($1,$2,$3,'queued')", [id, node.id, domain]);
   return id;
 }
 
@@ -265,10 +293,7 @@ router.post("/result", async (req, res, next) => {
 
     const result = req.body.result || {};
 
-    const { rows: healthRows } = await pool.query(
-      "SELECT last_health_status, last_health_reason FROM provider_nodes WHERE id=$1 LIMIT 1",
-      [node.id]
-    );
+    const { rows: healthRows } = await pool.query("SELECT last_health_status, last_health_reason FROM provider_nodes WHERE id=$1 LIMIT 1", [node.id]);
     const health = healthRows[0] || {};
     const healthReason = String(health.last_health_reason || "").toLowerCase();
     const waitingBecauseNetwork =
@@ -276,14 +301,8 @@ router.post("/result", async (req, res, next) => {
       (healthReason.includes("wrong network") || healthReason.includes("network check failed"));
 
     if (waitingBecauseNetwork) {
-      await pool.query(
-        "UPDATE provider_node_tasks SET status='error', error=$1, completed_at=NOW() WHERE id=$2 AND node_id=$3",
-        [health.last_health_reason || "wrong network", taskId, node.id]
-      );
-      await pool.query(
-        "UPDATE provider_nodes SET last_health_status='waiting', last_ping_at=NOW() WHERE id=$1",
-        [node.id]
-      );
+      await pool.query("UPDATE provider_node_tasks SET status='error', error=$1, completed_at=NOW() WHERE id=$2 AND node_id=$3", [health.last_health_reason || "wrong network", taskId, node.id]);
+      await pool.query("UPDATE provider_nodes SET last_health_status='waiting', last_ping_at=NOW() WHERE id=$1", [node.id]);
       return res.json({ ok: false, ignored: true, reason: health.last_health_reason || "wrong network" });
     }
 
