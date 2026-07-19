@@ -61,6 +61,10 @@ async function ensureNodeTable() {
       signal_label TEXT,
       network_operator TEXT,
       network_type_label TEXT,
+      quota_remaining_gb NUMERIC,
+      quota_total_gb NUMERIC,
+      quota_expires_at TEXT,
+      quota_label TEXT,
       ip TEXT,
       user_agent TEXT,
       last_seen_at TIMESTAMP DEFAULT NOW(),
@@ -74,6 +78,10 @@ async function ensureNodeTable() {
   await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS signal_label TEXT");
   await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_operator TEXT");
   await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS network_type_label TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_remaining_gb NUMERIC");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_total_gb NUMERIC");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_expires_at TEXT");
+  await pool.query("ALTER TABLE node_telemetry ADD COLUMN IF NOT EXISTS quota_label TEXT");
 }
 
 function cleanBase(url) {
@@ -98,39 +106,89 @@ function pollingPresets() {
   ].map((n) => ({ ...n, endpoint_url: `poll://${n.name}`, secret_key: defaultSecret(n.name) }));
 }
 
-function quantizeBatteryPercent(value) {
+function exactBatteryPercent(value) {
   if (value === null || value === undefined) return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
-  const clamped = Math.max(0, Math.min(100, n));
-  if (clamped === 0) return 0;
-  if (clamped < 10) return 10;
-  return Math.floor(clamped / 10) * 10;
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-function formatSignalLabel(node) {
-  if (node.signal_label) return node.signal_label;
+function radioGenerationLabel(value) {
+  const raw = String(value || "").toLowerCase().trim();
+  if (!raw) return "";
+  if (raw.includes("nr") || raw.includes("5g")) return "5G";
+  if (raw.includes("lte") || raw.includes("4g")) return "4G LTE";
+  if (raw.includes("hspa") || raw.includes("hsdpa") || raw.includes("hsupa")) return "3G HSPA";
+  if (raw.includes("umts") || raw.includes("wcdma") || raw.includes("3g")) return "3G";
+  if (raw.includes("edge")) return "EDGE";
+  if (raw.includes("gprs")) return "GPRS";
+  if (raw.includes("gsm") || raw.includes("2g")) return "2G GSM";
+  if (raw.includes("cdma") || raw.includes("evdo")) return "CDMA";
+  return raw.toUpperCase();
+}
+
+function formatSignalQualityLabel(node) {
   if (node.signal_percent !== null && node.signal_percent !== undefined) return `${node.signal_percent}%`;
   if (node.signal_dbm !== null && node.signal_dbm !== undefined) return `${node.signal_dbm} dBm`;
   if (node.signal_level !== null && node.signal_level !== undefined) return `${node.signal_level}/4`;
   return "n/a";
 }
 
+function formatSignalLabel(node) {
+  const radio = radioGenerationLabel(node.network_type_label || node.radio_type || "");
+  if (radio) return radio;
+  if (node.signal_label) return node.signal_label;
+  return formatSignalQualityLabel(node);
+}
+
+function quotaStatus(remaining, total) {
+  const r = Number(remaining);
+  const t = Number(total);
+  if (!Number.isFinite(r)) return "unknown";
+  if (r <= 1) return "critical";
+  if (r <= 3) return "warning";
+  if (Number.isFinite(t) && t > 0 && r / t <= 0.1) return "warning";
+  return "good";
+}
+
 function enrichNodeForUi(node) {
   const originalProviderName = node.provider_name;
   const originalNetworkType = node.network_type;
-  const rawBatteryPercent = node.battery_percent;
-  const visualBatteryPercent = quantizeBatteryPercent(rawBatteryPercent);
-  const hasBattery = visualBatteryPercent !== null && visualBatteryPercent !== undefined;
-  const batteryLabel = hasBattery ? `${visualBatteryPercent}%` : "n/a";
+  const rawBatteryPercent = exactBatteryPercent(node.battery_percent);
+  const hasBattery = rawBatteryPercent !== null && rawBatteryPercent !== undefined;
+  const batteryLabel = hasBattery ? `${rawBatteryPercent}%` : "n/a";
   const chargingLabel = node.is_charging === null || node.is_charging === undefined ? "n/a" : node.is_charging ? "Yes" : "No";
   const lastSeenLabel = node.telemetry_last_seen_at ? new Date(node.telemetry_last_seen_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "never";
   const signalLabel = formatSignalLabel(node);
+  const signalQualityLabel = formatSignalQualityLabel(node);
+  const quotaRemaining = node.quota_remaining_gb === null || node.quota_remaining_gb === undefined ? null : Number(node.quota_remaining_gb);
+  const quotaTotal = node.quota_total_gb === null || node.quota_total_gb === undefined ? null : Number(node.quota_total_gb);
+  const quotaLabel = node.quota_label || (Number.isFinite(quotaRemaining) && Number.isFinite(quotaTotal) ? `${quotaRemaining} GB / ${quotaTotal} GB` : Number.isFinite(quotaRemaining) ? `${quotaRemaining} GB` : "n/a");
   const networkTypeParts = [originalNetworkType];
-  if (node.network_type_label) networkTypeParts.push(node.network_type_label);
+  if (node.network_type_label) networkTypeParts.push(radioGenerationLabel(node.network_type_label) || node.network_type_label);
   if (node.network_operator) networkTypeParts.push(node.network_operator);
-  const iconLine = `${networkTypeParts.join(" · ")} · 📶 Signal ${signalLabel} · 🔋 ${batteryLabel} · ⚡ ${chargingLabel}`;
-  return { ...node, raw_provider_name: originalProviderName, raw_network_type: originalNetworkType, raw_battery_percent: rawBatteryPercent, battery_percent: visualBatteryPercent, provider_name: originalProviderName, network_type: iconLine, battery_label: batteryLabel, charging_label: chargingLabel, signal_label: signalLabel, last_seen_label: lastSeenLabel };
+  const quotaLine = quotaLabel !== "n/a" ? ` · Quota ${quotaLabel}${node.quota_expires_at ? ` exp ${node.quota_expires_at}` : ""}` : "";
+  const iconLine = `${networkTypeParts.join(" · ")} · Signal ${signalLabel}${signalQualityLabel !== "n/a" ? ` (${signalQualityLabel})` : ""} · Battery ${batteryLabel} · Charging ${chargingLabel}${quotaLine}`;
+  return {
+    ...node,
+    raw_provider_name: originalProviderName,
+    raw_network_type: originalNetworkType,
+    raw_battery_percent: rawBatteryPercent,
+    battery_percent: rawBatteryPercent,
+    provider_name: originalProviderName,
+    network_type: iconLine,
+    battery_label: batteryLabel,
+    charging_label: chargingLabel,
+    signal_label: signalLabel,
+    signal_quality_label: signalQualityLabel,
+    network_label: signalLabel,
+    radio_type: signalLabel,
+    quota_remaining_gb: quotaRemaining,
+    quota_total_gb: quotaTotal,
+    quota_label: quotaLabel,
+    quota_status: quotaStatus(quotaRemaining, quotaTotal),
+    last_seen_label: lastSeenLabel
+  };
 }
 
 async function pingNode(node) {
@@ -157,7 +215,8 @@ router.get("/", async (req, res, next) => {
     const { rows } = await pool.query(`
       SELECT n.*, t.battery_percent, t.is_charging, t.battery_status, t.battery_health, t.battery_temperature_c,
         t.signal_percent, t.signal_dbm, t.signal_asu, t.signal_level, t.signal_label, t.network_operator,
-        t.network_type_label, t.ip AS telemetry_ip, t.last_seen_at AS telemetry_last_seen_at, t.last_low_battery_alert_at
+        t.network_type_label, t.quota_remaining_gb, t.quota_total_gb, t.quota_expires_at, t.quota_label,
+        t.ip AS telemetry_ip, t.last_seen_at AS telemetry_last_seen_at, t.last_low_battery_alert_at
       FROM provider_nodes n
       LEFT JOIN node_telemetry t ON t.node_id = n.id
       WHERE ${access.sql}
