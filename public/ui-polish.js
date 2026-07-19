@@ -28,9 +28,12 @@
     const raw = String(value || '').toLowerCase().trim();
     if (!raw) return '';
     if (raw.includes('nr') || raw.includes('5g')) return '5G';
-    if (raw.includes('lte') || raw.includes('4g')) return '4G';
-    if (raw.includes('hspa') || raw.includes('hsdpa') || raw.includes('hsupa') || raw.includes('umts') || raw.includes('wcdma') || raw.includes('3g')) return '3G';
-    if (raw.includes('edge') || raw.includes('gprs') || raw.includes('gsm') || raw.includes('2g')) return '2G';
+    if (raw.includes('lte') || raw.includes('4g')) return '4G LTE';
+    if (raw.includes('hspa') || raw.includes('hsdpa') || raw.includes('hsupa')) return '3G HSPA';
+    if (raw.includes('umts') || raw.includes('wcdma') || raw.includes('3g')) return '3G';
+    if (raw.includes('edge')) return 'EDGE';
+    if (raw.includes('gprs')) return 'GPRS';
+    if (raw.includes('gsm') || raw.includes('2g')) return '2G GSM';
     if (raw.includes('cdma') || raw.includes('evdo')) return 'CDMA';
     return String(value || '').toUpperCase();
   }
@@ -46,6 +49,37 @@
 
   function nodeGenerationLabel(node) {
     return radioGenerationLabel(node.network_type_label || node.radio_type || node.network_label || node.raw_network_type || '');
+  }
+
+  function quotaText(node) {
+    if (!node) return '';
+    const label = String(node.quota_label || '').trim();
+    if (label && label !== 'n/a') return label;
+    const r = Number(node.quota_remaining_gb);
+    const t = Number(node.quota_total_gb);
+    if (Number.isFinite(r) && Number.isFinite(t)) return r + ' GB / ' + t + ' GB';
+    if (Number.isFinite(r)) return r + ' GB';
+    return '';
+  }
+
+  function quotaClass(node) {
+    const status = String(node.quota_status || '').toLowerCase();
+    if (status) return status;
+    const r = Number(node.quota_remaining_gb);
+    const t = Number(node.quota_total_gb);
+    if (!Number.isFinite(r)) return 'unknown';
+    if (r <= 1) return 'critical';
+    if (r <= 3) return 'warning';
+    if (Number.isFinite(t) && t > 0 && r / t <= 0.1) return 'warning';
+    return 'good';
+  }
+
+  function ensureQuotaStyle() {
+    if (document.getElementById('providerQuotaStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'providerQuotaStyle';
+    style.textContent = '.nodeQuotaLine{margin-top:8px;font-size:12px;font-weight:800;letter-spacing:.02em;display:flex;gap:6px;align-items:center}.nodeQuotaLine.good{color:#20e070}.nodeQuotaLine.warning{color:#f7c948}.nodeQuotaLine.critical{color:#ff4d5e}.nodeQuotaLine.unknown{color:#8b95a7}.nodeQuotaLine small{font-weight:600;color:#8b95a7}';
+    document.head.appendChild(style);
   }
 
   function ensurePage() {
@@ -81,14 +115,8 @@
 
   function collectProjectNames(projects, domains) {
     const names = new Set();
-    (projects || []).forEach((p) => {
-      const name = String(p.project_name || p.name || '').trim();
-      if (name && name !== 'No Project') names.add(name);
-    });
-    (domains || []).forEach((d) => {
-      const name = String(d.project_name || '').trim();
-      if (name && name !== 'No Project') names.add(name);
-    });
+    (projects || []).forEach((p) => { const name = String(p.project_name || p.name || '').trim(); if (name && name !== 'No Project') names.add(name); });
+    (domains || []).forEach((d) => { const name = String(d.project_name || '').trim(); if (name && name !== 'No Project') names.add(name); });
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }
 
@@ -119,19 +147,15 @@
       const [projects, domains] = await Promise.all([getJson('/api/projects'), getJson('/api/domains')]);
       const names = collectProjectNames(projects, domains);
       if (!names.length) return;
-
       const createInput = document.querySelector('.createProjectForm input[placeholder^="Project name"]');
       if (createInput && !createInput.dataset.projectSelectPatched) {
         createInput.dataset.projectSelectPatched = '1';
-        const select = buildProjectSelect(names, createInput, 'Project baru, contoh: Empire88');
-        createInput.parentNode.insertBefore(select, createInput);
+        createInput.parentNode.insertBefore(buildProjectSelect(names, createInput, 'Project baru, contoh: Empire88'), createInput);
       }
-
       const rankInput = document.querySelector('.rankForm input[placeholder="Project name"]');
       if (rankInput && !rankInput.dataset.projectSelectPatched) {
         rankInput.dataset.projectSelectPatched = '1';
-        const select = buildProjectSelect(names, rankInput, 'Project baru untuk Google Rank');
-        rankInput.parentNode.insertBefore(select, rankInput);
+        rankInput.parentNode.insertBefore(buildProjectSelect(names, rankInput, 'Project baru untuk Google Rank'), rankInput);
       }
     } catch (_) {}
   }
@@ -158,34 +182,42 @@
 
   async function patchProviderSignalLabels() {
     try {
+      ensureQuotaStyle();
       const nodes = await getJson('/api/nodes');
       if (!Array.isArray(nodes)) return;
       const byName = new Map(nodes.map((node) => [String(node.name || '').trim(), node]));
-
       document.querySelectorAll('.nodeStatusCard').forEach((cardEl) => {
         const name = cardEl.querySelector('.nodeTitleBlock b')?.textContent?.trim();
         const node = byName.get(name);
         if (!node) return;
-
         const generation = nodeGenerationLabel(node);
-        if (!generation) return;
-
         const labelEl = cardEl.querySelector('.signalGauge b');
-        if (labelEl) labelEl.textContent = generation;
-
+        if (labelEl && generation) labelEl.textContent = generation;
         const gaugeEl = cardEl.querySelector('.signalGauge');
-        if (gaugeEl) gaugeEl.title = 'Signal ' + generation + ' · ' + signalDetailLabel(node);
+        if (gaugeEl && generation) gaugeEl.title = 'Signal ' + generation + ' · ' + signalDetailLabel(node);
+        const q = quotaText(node);
+        let qEl = cardEl.querySelector('.nodeQuotaLine');
+        if (q) {
+          if (!qEl) {
+            qEl = document.createElement('div');
+            qEl.className = 'nodeQuotaLine';
+            const meta = cardEl.querySelector('.nodeMetaLine') || cardEl.querySelector('.nodeTelemetryRow') || cardEl;
+            meta.parentNode.insertBefore(qEl, meta.nextSibling);
+          }
+          qEl.className = 'nodeQuotaLine ' + quotaClass(node);
+          qEl.innerHTML = 'Quota: ' + html(q) + (node.quota_expires_at ? ' <small>exp ' + html(node.quota_expires_at) + '</small>' : '');
+        } else if (qEl) {
+          qEl.remove();
+        }
       });
-
       document.querySelectorAll('table tbody tr').forEach((row) => {
         const firstCell = row.querySelector('td');
         const name = firstCell?.textContent?.trim();
         const node = byName.get(name);
         if (!node) return;
         const generation = nodeGenerationLabel(node);
-        if (!generation) return;
         const cells = row.querySelectorAll('td');
-        if (cells.length >= 7 && row.textContent.includes(node.provider_name || '')) {
+        if (generation && cells.length >= 7 && row.textContent.includes(node.provider_name || '')) {
           cells[6].innerHTML = html(generation) + (node.signal_dbm !== null && node.signal_dbm !== undefined ? ' <span class="muted">' + html(node.signal_dbm + ' dBm') + '</span>' : '');
         }
       });
