@@ -114,9 +114,7 @@ function walkNumbers(obj, keys = []) {
   function visit(value, path) {
     if (value === null || value === undefined) return;
     if (typeof value === "number") found.push({ path: path.join(".").toLowerCase(), value });
-    if (typeof value === "object") {
-      Object.entries(value).forEach(([k, v]) => visit(v, [...path, k]));
-    }
+    if (typeof value === "object") Object.entries(value).forEach(([k, v]) => visit(v, [...path, k]));
   }
   visit(obj, []);
   return found.filter((item) => !keys.length || keys.some((key) => item.path.includes(key)));
@@ -197,10 +195,33 @@ function getSignalTelemetry() {
   }
 }
 
+function formatQuotaLabel(remaining, total) {
+  const r = toNumberOrNull(remaining);
+  const t = toNumberOrNull(total);
+  if (r !== null && t !== null) return `${r} GB / ${t} GB`;
+  if (r !== null) return `${r} GB`;
+  return "";
+}
+
+function getQuotaTelemetry() {
+  const remaining = toNumberOrNull(process.env.QUOTA_REMAINING_GB);
+  const total = toNumberOrNull(process.env.QUOTA_TOTAL_GB);
+  const expires = String(process.env.QUOTA_EXPIRES_AT || "").trim();
+  const label = String(process.env.QUOTA_LABEL || formatQuotaLabel(remaining, total)).trim();
+  if (remaining === null && total === null && !expires && !label) return {};
+  return {
+    quota_remaining_gb: remaining,
+    quota_total_gb: total,
+    quota_expires_at: expires,
+    quota_label: label
+  };
+}
+
 function getTelemetry() {
   return {
     ...getBatteryTelemetry(),
-    ...getSignalTelemetry()
+    ...getSignalTelemetry(),
+    ...getQuotaTelemetry()
   };
 }
 
@@ -292,13 +313,7 @@ async function pollOnce() {
   const net = await getPublicNetworkInfo();
 
   if (!net.ok) {
-    await axios.post(`${CENTRAL_URL}/api/agent/poll`, {
-      node_name: NODE_NAME,
-      secret_key: AGENT_SECRET,
-      telemetry,
-      network_ok: false,
-      network_reason: net.reason
-    }, { timeout: 30000 });
+    await axios.post(`${CENTRAL_URL}/api/agent/poll`, { node_name: NODE_NAME, secret_key: AGENT_SECRET, telemetry, network_ok: false, network_reason: net.reason }, { timeout: 30000 });
     console.log(`[${new Date().toISOString()}] Waiting: ${net.reason}`);
     return;
   }
